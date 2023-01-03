@@ -22,13 +22,16 @@ the stimulus discrimination performance in the antisaccade task.
 ### Experiment 1
 **Research Question**: Does varying cue-stimulus interval affect the sensory
 discrimination performance in the antisaccade task?  
-**Task**: Antisaccade task. [Details here](google.com)  
+**Task**: Antisaccade task. [Description here](google.com) and [Repository here.](https://github.com/bartekkroczek/antisaccade-task)  
 **Task specification**: [1a here](google.com) and [1b here](google.com)
 
-**Data A:** 150 participants, CSI range 216-1000 wth 16.(6) ms step [Available here](google.com)  
-**Data B:** 40 participants, CSI range 400-900ms in 8ms step. [Available here](google.com)  
+**Data A:** 150 participants, CSI range 216-1000 wth 16.(6) ms step [Available here](Experiment_1/Data/Data_A)  
+**Data B:** 40 participants, CSI range 400-900ms in 8.(3) ms step. [Available here](Experiment_1/Data/Data_B)  
 > :warning: Due to COVID-19 related lockdown study was interrupted after 9 participants. That's why data are splitted 
->	into two Cohorts. Both cohorts did exactly the same procedure. 
+>	into two Cohorts. Both cohorts did exactly the same procedure. Cohort 1 had 4 sessions containing 6700 trials,
+> Cohort_2 had 2 sessions containing 4000 trials. 
+
+**Data Issues**: [described here](Experiment_1/Data/DATA_ISSUES.md).
 
 #### Analysis 1
 **Question:** Does stimulus discrimination performance oscillate?  
