@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+
+
+<title>Does attention in perceptual tasks change over time?</title>
+
+
+
+
+
+
+
+<!--
+Font-awesome icons ie github or twitter
+-->
+<link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.8.1/css/all.css" integrity="sha384-50oBUHEmvpQ+1lW4y57PTFmhCaXp0ML5d60M1M7uH2+nqUivzIebhndOJK28anvf" crossorigin="anonymous">
+<link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.8.1/css/brands.css" integrity="sha384-n9+6/aSqa9lBidZMRCQHTHKJscPq6NW4pCQBiMmHdUCvPN8ZOg2zJJTkC7WIezWv" crossorigin="anonymous">
+
+<!--
+Google fonts api stuff
+-->
+<link href='https://fonts.googleapis.com/css?family=Special Elite' rel='stylesheet'>
+<link href='https://fonts.googleapis.com/css?family=Rasa' rel='stylesheet'>
+
+<!--
+Here are the required style attributes for css to make this poster work :)
+-->
+<style>
+@page {
+size: 36in 48in;
+margin: 0;
+padding: 0;
+}
+body {
+margin: 0px;
+padding: 0px;
+width: 36in;
+height: 48in;
+text-align: justify;
+font-size: 45px;
+line-height: 1.05;
+}
+/* RMarkdown Class Styles */
+/* center align leaflet map,
+from https://stackoverflow.com/questions/52112119/center-leaflet-in-a-rmarkdown-document */
+.html-widget {
+margin: auto;
+position: sticky;
+margin-top: 2cm;
+margin-bottom: 2cm;
+}
+.leaflet.html-widget.html-widget-static-bound.leaflet-container.leaflet-touch.leaflet-fade-anim.leaflet-grab.leaflet-touch-drag.leaflet-touch-zoom {
+position: sticky;
+width: 100%;
+}
+pre.sourceCode.r {
+background-color: #dddddd40;
+border-radius: 4mm;
+padding: 4mm;
+width: 75%;
+margin: auto;
+margin-top: 1em;
+margin-bottom: 1em;
+/* align-items: center; */
+}
+code.sourceCode.r{
+background-color: transparent;
+font-size: 20pt;
+border-radius: 2mm;
+}
+code {
+font-size: 25pt;
+font-family: monospace;
+background-color: #60efff24;
+color: #0061ff;
+padding: 1.2mm;
+line-height: 1;
+border-radius: 2mm;
+}
+caption {
+margin-bottom: 10px;
+font-size: 20pt;
+font-style: italic;
+}
+
+tbody tr:nth-child(odd) {
+    background-color: #60efff20;
+}
+.table>thead>tr>th, .table>tbody>tr>th, .table>tfoot>tr>th, .table>thead>tr>td, .table>tbody>tr>td, .table>tfoot>tr>td{
+  border-spacing: 0;
+  font-size: 40%;
+  border-style: none;
+  padding-top: 15px;
+  padding-bottom: 15px;
+  padding-right: 1em;
+  padding-left: 1em;
+  line-height: 1em;
+}
+table {
+  margin: auto;
+}
+th {
+  padding-left: 5mm;
+  padding-right: 5mm;
+}
+.caption {
+font-size: 20pt;
+font-style: italic;
+padding-top: 0;
+}
+.references {
+font-size: 20px;
+line-height: 90%;
+}
+/* Create three unequal columns that floats next to each other */
+.column {
+float: left;
+padding: 0px;
+}
+.outer {
+width: 36in;
+height: calc(48in *  0.6325 );
+-webkit-column-count: 3; /* Chrome, Safari, Opera */
+-moz-column-count: 3; /* Firefox */
+column-count: 3;
+-webkit-column-fill: auto;
+-moz-column-fill: auto;
+column-fill: auto;
+column-gap: 0;
+padding-left: 0cm;
+padding-right: 0cm;
+/* -webkit-column-rule-width: 50%;
+-moz-column-rule-width: 50%;
+column-rule-width: 50%; */
+-webkit-column-rule-style: none;
+-moz-column-rule-style: none;
+column-rule-style: none;
+-webkit-column-rule-color: black;
+-moz-column-rule-color: black;
+column-rule-color: black;
+background-color: #ffffff;
+font-family: Rasa;
+margin-top: calc(48in *  0.25 );
+padding-top: 1em;
+padding-bottom: 1em;
+}
+span.citation {
+  color: #60efff;
+  font-weight: bold;
+}
+a {
+text-decoration: none;
+color: #60efff;
+}
+#title {
+font-size: 65pt;
+text-align: left;
+margin: 0;
+line-height: 98%;
+border-bottom: 0;
+font-weight: normal;
+background: 0;
+}
+#author {
+color: #0061ff;
+margin: 0;
+line-height: 85%;
+font-size: 1.17em;
+}
+#affiliation {
+padding-top: 0.1em;
+color: ;
+font-style: italic;
+font-size: 25px;
+margin: 0;
+}
+sup {
+color: #cc0000;
+}
+.affiliation sup {
+font-size: 20px;
+}
+.author {
+text-align: left;
+}
+.author sup {
+font-size: 30px;
+}
+.author_extra {
+color: #60efff;
+margin: 0;
+line-height: 85%;
+font-size: 35px;
+text-align: left;
+}
+.outer h1, h2, h3, h4, h5, h6 {
+text-align: center;
+margin: 0;
+font-weight: bold;
+}
+.section h1 {
+  text-align:center;
+  padding-bottom:5px;
+  background:
+    linear-gradient(
+      to left,
+      #ffffff 1%,
+      #ffffff 20%,
+      #0061ff75 33%,
+      #0061ff 50%,
+      #0061ff75 66%,
+      #ffffff 80%,
+      #ffffff 99%
+    )
+    left
+    bottom
+    #ffffff
+    no-repeat;
+  background-size:100% 5px ;
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+.outer h2 {
+text-align: center;
+}
+.outer p, .level2 {
+color: #000000;
+}
+.outer ol {
+padding-left: 8%;
+padding-right: 8%;
+text-align: left;
+}
+.main {
+width: 36in;
+height: calc(48in * 0.25);
+position: absolute;
+background-color: #0061ff;
+color: #ffffff90;
+font-family: Special Elite;
+background-image: linear-gradient(#0061ff 50%,#60efff);
+}
+.main strong {
+color: #ffffff;
+}
+.main strong > sup {
+color: #ffffff;
+}
+.main sup {
+color: #ffffff90;
+}
+#main-img-left {
+width: 10%;
+left: 0.5in;
+bottom: 0.2in;
+position: absolute;
+}
+#main-img-center {
+width: 10%;
+left: calc(36in * 0.45);
+bottom: 0.5in;
+position: absolute;
+}
+#main-img-right {
+width: 10%;
+right: 0.5in;
+bottom: 0.2in;
+position: absolute;
+}
+.main p {
+font-size: 150pt;
+font-family: Special Elite;
+text-align: center;
+margin: 0;
+position: absolute;
+top: 50%;
+-ms-transform: translateY(-50%);
+transform: translateY(-50%);
+margin-left: 1em;
+}
+.fab {
+color: #00000030;
+font-size: 25px;
+}
+.twitter, i {
+color: #00000030;
+font-size: 35px;
+text-decoration: none;
+}
+a.email {
+text-decoration: none;
+color: #00000030;
+font-size: 35px;
+}
+.envelope {
+color: #00000030;
+font-size: 5px;
+text-decoration: none;
+}
+.poster_wrap {
+width: 36in;
+height: 48in;
+padding: 0cm;
+}
+.main_bottom {
+width: 36in;
+height: calc(48in * 0.1);
+margin-top: calc(48in * 0.9);
+position: absolute;
+background-color: #0061ff;
+background-image: linear-gradient(#60efff 10%, #0061ff);
+}
+.section {
+  padding-left: 10mm;
+  padding-right: 10mm;
+}
+span > #tab:mytable {
+  font-weight: bold;
+}
+.orcid img {
+  width: 3%;
+}
+.emphasis {
+  background-color: #008080;
+  color: #ffffff;
+  border: solid #0b2045 3mm;
+  margin: 1em;
+  padding-left: 0;
+  padding-right: 0;
+}
+.emphasis h1 {
+  font-weight: bold;
+  background: none;
+  background-color: #0b2045;
+  padding-bottom: 5mm;
+  padding-top: 1mm;
+  margin-top: -1mm;
+  margin-right: -1mm;
+  margin-left: -1mm;
+}
+.emphasis blockquote {
+  border: 0;
+}
+.emphasis ol {
+  padding: 0;
+  padding-left: 8%;
+  font-size: 100%;
+  font-weight: bold;
+}
+.emphasis p {
+  color: #ffffff;
+}
+</style>
+</head>
+<body>
+
+
+<div class="poster_wrap">
+
+<div class="column outer">
+<div class="section">
+<h1 id="title">Does attention in perceptual tasks change over time?</h1><br>
+<h3 id="author" class="author">
+
+Bartłomiej Kroczek<sup> 1, <a class="orcid" href="https://orcid.org/0000-0002-4632-636X"><img src="https://raw.githubusercontent.com/brentthorne/posterdown/master/images/orcid.jpg"></a></sup><br>
+
+<a class='envelope'><i class="fas fa-envelope"></i></a> <a href="mailto:bartek.kroczek@doctoral.uj.edu.pl" class="email">bartek.kroczek@doctoral.uj.edu.pl</a> <br>
+ Adam Chuderski<sup> 1, <a class="orcid" href="https://orcid.org/0000-0001-6198-6748"><img src="https://raw.githubusercontent.com/brentthorne/posterdown/master/images/orcid.jpg"></a></sup><br>
+
+<a class='envelope'><i class="fas fa-envelope"></i></a> <a href="mailto:adam.chuderski@uj.edu.pl" class="email">adam.chuderski@uj.edu.pl</a> <br>
+</h3>
+
+<h5 id="author_extra", class="author_extra">
+ </h5>
+
+
+<p id="affiliation" class="affiliation">
+<sup>1</sup> Neurocognitive Processing Laboratory, Department of Cognitive Science, Jagiellonian University, Krakow, Poland
+</p>
+</div>
+
+<div id="introduction" class="section level1">
+<h1>Introduction</h1>
+<p>Whether the stimulus discrimination performance <code>increases</code> (e.g., due to goal strengthening),
+<code>decreases</code> (e.g., due to vigilance decay), or <code>varies periodically</code> (e.g., along attentional rhythms) as a
+function of time elapsing between task onset (fixation point, cue) and stimulus (cue-stimulus interval;
+CSI) is debated in the current literature on attention, and so far the findings have <strong>not been unequivocal</strong>.</p>
+</div>
+<div id="method" class="section level1">
+<h1>Method</h1>
+<p>In order to precisely examine the role of CSI in stimulus discrimination, we used the classic
+<code>antisaccade task</code> with <strong>CSI</strong> varied in <code>millisecond steps</code>. On each trial, participants were shown for <strong>250 ms</strong> either <code>left or right arrow</code> as a target, and their task was to indicate which arrow was displayed by
+<code>pressing the appropriate key</code>. The arrows were randomly displayed on either the <strong>left or right side of the screen</strong>. The stimulus was accompanied by a <code>red dot</code> briefly flashing on the <strong>opposite side of the screen</strong>, which should be ignored. The fixation point and the red dot/stimulus presentation were
+separated by a <code>blank screen</code> shown for <strong>CSI ranging</strong>.</p>
+<p><img src="media/Antisaccadic_Task.png" style="width:115.0%" /></p>
+</div>
+<div id="datasets" class="section level1">
+<h1>Datasets</h1>
+<p>We conducted two experiments, one with lower resolution (less trials per participant) but a larger
+sample and the other with higher resolution but a smaller
+sample. Both data sets were analyzed in the same way.</p>
+<table>
+<colgroup>
+<col width="30%" />
+<col width="33%" />
+<col width="36%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th align="center"><strong><code>Param</code></strong></th>
+<th align="center"><span style="color:#a1c549">Bigger low-res</span></th>
+<th align="center"><span style="color:#ce8dff">Smaller high-res</span></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="center"><strong>N</strong></td>
+<td align="center">150</td>
+<td align="center">40</td>
+</tr>
+<tr class="even">
+<td align="center"><strong>Sampling freq</strong></td>
+<td align="center">60 Hz</td>
+<td align="center">120 Hz</td>
+</tr>
+<tr class="odd">
+<td align="center"><strong>CSI Step</strong></td>
+<td align="center">16.(6) ms</td>
+<td align="center">8.(3) ms</td>
+</tr>
+<tr class="even">
+<td align="center"><strong>CSI Range</strong></td>
+<td align="center">350-1000 ms</td>
+<td align="center">400-900 ms</td>
+</tr>
+<tr class="odd">
+<td align="center"><strong>Unique CSI’s</strong></td>
+<td align="center">40</td>
+<td align="center">61</td>
+</tr>
+<tr class="even">
+<td align="center"><strong>Reps per CSI</strong></td>
+<td align="center">11</td>
+<td align="center">104</td>
+</tr>
+<tr class="odd">
+<td align="center"><strong>Trials</strong></td>
+<td align="center">440 per person</td>
+<td align="center">6344 per person</td>
+</tr>
+</tbody>
+</table>
+<p>For each participant, the mean accuracy was calculated for each CSI timepoint. These mean accuracy values were plotted as a function of increasing CSI, with a single curve created for each person.</p>
+<p><img src="poster_ICPS_files/figure-html/unnamed-chunk-4-1.png" width="1027.2" /></p>
+</div>
+<div id="results" class="section level1">
+<h1>Results</h1>
+<p>The curves described above were used to analyze the potential presence of an <strong>increasing</strong> or <strong>decreasing</strong> <code>trend</code>, and a <code>periodic variation</code>.</p>
+<div id="trend" class="section level2">
+<h2>Trend</h2>
+<p>The first analysis consisted of fitting a regression line for each participant. The
+slopes of the fitted regression were then subjected to a one-sample t-test comparing their mean with the zero value.</p>
+<p><img src="poster_ICPS_files/figure-html/unnamed-chunk-8-1.png" width="1027.2" /></p>
+<p>The colored curves represents beta variable distribution for <span style="color:#a1c549">bigger low-res</span> and <span style="color:#ce8dff">smaller high-res</span> datasets respectively.
+Both curves did not show evidence of non-normality and are showing significant difference from a zero distribution (<strong>p&lt;.001</strong>).
+However, both effects are, in our opinion, negligibly small (<span style="color:#a1c549">4.15 pp </span> and <span style="color:#ce8dff">4.58 pp </span> of increased avg. accuracy over 1000 ms).</p>
+</div>
+<div id="periodic-variation" class="section level2">
+<h2>Periodic variation</h2>
+<p>The periodicity analysis was performed on the frequency spectrum of <span style="color:#ce8dff">smaller high-res</span> dataset calculated for each
+participant using the <code>Fourier transform</code>. Periodicity would be detected when the power of any of the
+examined frequency bands was significantly higher than the random level. The mean correctness for
+each subject was <code>permuted 10,000 times</code>, creating artificial signals that were then Fourier-transformed.
+Thus, the power distribution of each frequency band in the absence of periodicity was known. The
+comparison of the power obtained in the experiment with the permutationally determined random
+level was done using both <code>Holmes adjusted</code> and raw directional p-tests.</p>
+<table>
+<thead>
+<tr class="header">
+<th align="center">Frequency [in Hz]</th>
+<th align="center">Estimate</th>
+<th align="center">p value</th>
+<th align="right">p adjusted</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="center">0.000</td>
+<td align="center">0.086</td>
+<td align="center">0.850</td>
+<td align="right">&gt;.99</td>
+</tr>
+<tr class="even">
+<td align="center">1.277</td>
+<td align="center">0.435</td>
+<td align="center">0.300</td>
+<td align="right">&gt;.99</td>
+</tr>
+<tr class="odd">
+<td align="center">2.553</td>
+<td align="center">0.612</td>
+<td align="center">0.990</td>
+<td align="right">&gt; .99</td>
+</tr>
+<tr class="even">
+<td align="center">3.830</td>
+<td align="center">0.661</td>
+<td align="center">0.760</td>
+<td align="right">&gt; .99</td>
+</tr>
+<tr class="odd">
+<td align="center">5.106</td>
+<td align="center">0.603</td>
+<td align="center">0.100</td>
+<td align="right">&gt; .99</td>
+</tr>
+<tr class="even">
+<td align="center">6.383</td>
+<td align="center">0.537</td>
+<td align="center">0.820</td>
+<td align="right">&gt; .99</td>
+</tr>
+<tr class="odd">
+<td align="center">7.660</td>
+<td align="center">0.573</td>
+<td align="center">0.950</td>
+<td align="right">&gt; .99</td>
+</tr>
+<tr class="even">
+<td align="center">8.936</td>
+<td align="center">0.554</td>
+<td align="center">0.960</td>
+<td align="right">&gt; .99</td>
+</tr>
+<tr class="odd">
+<td align="center">10.213</td>
+<td align="center">0.542</td>
+<td align="center">0.750</td>
+<td align="right">&gt; .99</td>
+</tr>
+<tr class="even">
+<td align="center">11.489</td>
+<td align="center">0.602</td>
+<td align="center">0.230</td>
+<td align="right">&gt; .99</td>
+</tr>
+<tr class="odd">
+<td align="center">12.766</td>
+<td align="center">0.590</td>
+<td align="center">0.740</td>
+<td align="right">&gt; .99</td>
+</tr>
+<tr class="even">
+<td align="center">14.043</td>
+<td align="center">0.595</td>
+<td align="center">0.280</td>
+<td align="right">&gt; .99</td>
+</tr>
+<tr class="odd">
+<td align="center">15.319</td>
+<td align="center">0.555</td>
+<td align="center">0.650</td>
+<td align="right">&gt; .99</td>
+</tr>
+<tr class="even">
+<td align="center">16.596</td>
+<td align="center">0.639</td>
+<td align="center">0.054</td>
+<td align="right">&gt; .99</td>
+</tr>
+<tr class="odd">
+<td align="center">17.872</td>
+<td align="center">0.607</td>
+<td align="center">0.350</td>
+<td align="right">&gt; .99</td>
+</tr>
+<tr class="even">
+<td align="center">19.149</td>
+<td align="center">0.535</td>
+<td align="center">0.910</td>
+<td align="right">&gt; .99</td>
+</tr>
+<tr class="odd">
+<td align="center">20.426</td>
+<td align="center">0.548</td>
+<td align="center">0.860</td>
+<td align="right">&gt; .99</td>
+</tr>
+<tr class="even">
+<td align="center">21.702</td>
+<td align="center">0.601</td>
+<td align="center">0.470</td>
+<td align="right">&gt; .99</td>
+</tr>
+<tr class="odd">
+<td align="center">22.979</td>
+<td align="center">0.592</td>
+<td align="center">0.410</td>
+<td align="right">&gt; .99</td>
+</tr>
+<tr class="even">
+<td align="center">24.255</td>
+<td align="center">0.516</td>
+<td align="center">0.440</td>
+<td align="right">&gt; .99</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div id="conclusion" class="section level1">
+<h1>Conclusion</h1>
+<p>We conclude that the correctness of solving the anti-saccade task <code>does not oscillate in the CSI function</code> but shows <code>a small trend effect</code>. These findings contradict some of the literature on behavioral oscillations. We are planning further experiments to explain this phenomenon in wider CSI intervals, <code>up to 3000 ms</code>.</p>
+<!-- ```{r, include=FALSE} -->
+<!-- knitr::write_bib(c('knitr','rmarkdown','posterdown','pagedown'), 'packages.bib') -->
+<!-- ``` -->
+<!-- # References -->
+</div>
+
+</div>
+<div class="main">
+<p>Varying <strong>cue-stimulus</strong> interval <strong>marginally affects</strong> the sensory <strong>discrimination performance</strong> in the <strong>antisaccade</strong> task</p>
+</div>
+<div class="main_bottom">
+<img id="main-img-left" src=media/logo_uj_transparent.png>
+<img id="main-img-center" src=media/logo_uj_transparent.png>
+<img id="main-img-right" src=media/logo_kogni_transparent.png>
+</div>
+</div>
+
+
+
+</body>
+</html>
