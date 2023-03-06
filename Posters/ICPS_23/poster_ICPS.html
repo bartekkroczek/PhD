@@ -33,17 +33,17 @@ Here are the required style attributes for css to make this poster work :)
 -->
 <style>
 @page {
-size: 36in 48in;
+size: 33.1in 46.8in;
 margin: 0;
 padding: 0;
 }
 body {
 margin: 0px;
 padding: 0px;
-width: 36in;
-height: 48in;
+width: 33.1in;
+height: 46.8in;
 text-align: justify;
-font-size: 45px;
+font-size: 44px;
 line-height: 1.05;
 }
 /* RMarkdown Class Styles */
@@ -124,8 +124,8 @@ float: left;
 padding: 0px;
 }
 .outer {
-width: 36in;
-height: calc(48in *  0.6325 );
+width: 33.1in;
+height: calc(46.8in *  0.6325 );
 -webkit-column-count: 3; /* Chrome, Safari, Opera */
 -moz-column-count: 3; /* Firefox */
 column-count: 3;
@@ -146,7 +146,7 @@ column-rule-style: none;
 column-rule-color: black;
 background-color: #ffffff;
 font-family: Rasa;
-margin-top: calc(48in *  0.25 );
+margin-top: calc(46.8in *  0.25 );
 padding-top: 1em;
 padding-bottom: 1em;
 }
@@ -238,8 +238,8 @@ padding-right: 8%;
 text-align: left;
 }
 .main {
-width: 36in;
-height: calc(48in * 0.25);
+width: 33.1in;
+height: calc(46.8in * 0.25);
 position: absolute;
 background-color: #0061ff;
 color: #ffffff90;
@@ -263,7 +263,7 @@ position: absolute;
 }
 #main-img-center {
 width: 10%;
-left: calc(36in * 0.45);
+left: calc(33.1in * 0.45);
 bottom: 0.5in;
 position: absolute;
 }
@@ -274,7 +274,7 @@ bottom: 0.2in;
 position: absolute;
 }
 .main p {
-font-size: 150pt;
+font-size: 140pt;
 font-family: Special Elite;
 text-align: center;
 margin: 0;
@@ -304,14 +304,14 @@ font-size: 5px;
 text-decoration: none;
 }
 .poster_wrap {
-width: 36in;
-height: 48in;
+width: 33.1in;
+height: 46.8in;
 padding: 0cm;
 }
 .main_bottom {
-width: 36in;
-height: calc(48in * 0.1);
-margin-top: calc(48in * 0.9);
+width: 33.1in;
+height: calc(46.8in * 0.1);
+margin-top: calc(46.8in * 0.9);
 position: absolute;
 background-color: #0061ff;
 background-image: linear-gradient(#60efff 10%, #0061ff);
@@ -381,7 +381,7 @@ Bartłomiej Kroczek<sup> 1, <a class="orcid" href="https://orcid.org/0000-0002-4
 
 
 <p id="affiliation" class="affiliation">
-<sup>1</sup> Neurocognitive Processing Laboratory, Department of Cognitive Science, Jagiellonian University, Krakow, Poland
+<sup>1</sup> Department of Cognitive Science, Jagiellonian University, Krakow, Poland
 </p>
 </div>
 
@@ -390,7 +390,7 @@ Bartłomiej Kroczek<sup> 1, <a class="orcid" href="https://orcid.org/0000-0002-4
 <p>Whether the stimulus discrimination performance <code>increases</code> (e.g., due to goal strengthening),
 <code>decreases</code> (e.g., due to vigilance decay), or <code>varies periodically</code> (e.g., along attentional rhythms) as a
 function of time elapsing between task onset (fixation point, cue) and stimulus (cue-stimulus interval;
-CSI) is debated in the current literature on attention, and so far the findings have <strong>not been unequivocal</strong>.</p>
+CSI) is debated in the current literature on attention, and so far the findings <strong>are equivocal</strong>.</p>
 </div>
 <div id="method" class="section level1">
 <h1>Method</h1>
@@ -404,7 +404,7 @@ separated by a <code>blank screen</code> shown for <strong>CSI ranging</strong>.
 <h1>Datasets</h1>
 <p>We conducted two experiments, one with lower resolution (less trials per participant) but a larger
 sample and the other with higher resolution but a smaller
-sample. Both data sets were analyzed in the same way.</p>
+sample.</p>
 <table>
 <colgroup>
 <col width="30%" />
@@ -431,8 +431,8 @@ sample. Both data sets were analyzed in the same way.</p>
 </tr>
 <tr class="odd">
 <td align="center"><strong>CSI Step</strong></td>
-<td align="center">16.(6) ms</td>
-<td align="center">8.(3) ms</td>
+<td align="center">16.6 ms</td>
+<td align="center">8.3 ms</td>
 </tr>
 <tr class="even">
 <td align="center"><strong>CSI Range</strong></td>
@@ -466,10 +466,10 @@ sample. Both data sets were analyzed in the same way.</p>
 <h2>Trend</h2>
 <p>The first analysis consisted of fitting a regression line for each participant. The
 slopes of the fitted regression were then subjected to a one-sample t-test comparing their mean with the zero value.</p>
-<p><img src="poster_ICPS_files/figure-html/unnamed-chunk-8-1.png" width="1027.2" /></p>
-<p>The colored curves represents beta variable distribution for <span style="color:#a1c549">bigger low-res</span> and <span style="color:#ce8dff">smaller high-res</span> datasets respectively.
+<p><img src="poster_ICPS_files/figure-html/unnamed-chunk-8-1.png" width="979.2" /></p>
+<p>The colored curves represent beta variable distribution for <span style="color:#a1c549">bigger low-res</span> and <span style="color:#ce8dff">smaller high-res</span> datasets respectively.
 Both curves did not show evidence of non-normality and are showing significant difference from a zero distribution (<strong>p&lt;.001</strong>).
-However, both effects are, in our opinion, negligibly small (<span style="color:#a1c549">4.15 pp </span> and <span style="color:#ce8dff">4.58 pp </span> of increased avg. accuracy over 1000 ms).</p>
+However, both effects are, in our opinion, negligibly small (<span style="color:#a1c549">4.15% </span> and <span style="color:#ce8dff">4.58% </span> of increased avg. accuracy over 1000 ms).</p>
 </div>
 <div id="periodic-variation" class="section level2">
 <h2>Periodic variation</h2>
@@ -483,10 +483,10 @@ level was done using both <code>Holmes adjusted</code> and raw directional p-tes
 <table>
 <thead>
 <tr class="header">
-<th align="center">Frequency [in Hz]</th>
+<th align="center">Frequency [Hz]</th>
 <th align="center">Estimate</th>
 <th align="center">p value</th>
-<th align="right">p adjusted</th>
+<th align="right">p adj</th>
 </tr>
 </thead>
 <tbody>
@@ -625,11 +625,11 @@ level was done using both <code>Holmes adjusted</code> and raw directional p-tes
 
 </div>
 <div class="main">
-<p>Varying <strong>cue-stimulus</strong> interval <strong>marginally affects</strong> the sensory <strong>discrimination performance</strong> in the <strong>antisaccade</strong> task</p>
+<p>Varying <strong>cue-stimulus</strong> interval <strong>negligibly affects</strong> the sensory <strong>discrimination performance</strong> in the <strong>antisaccade</strong> task</p>
 </div>
 <div class="main_bottom">
 <img id="main-img-left" src=media/logo_uj_transparent.png>
-<img id="main-img-center" src=media/logo_uj_transparent.png>
+<img id="main-img-center" src=media/qr-code-transparent.png>
 <img id="main-img-right" src=media/logo_kogni_transparent.png>
 </div>
 </div>

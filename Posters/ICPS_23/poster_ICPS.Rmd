@@ -15,14 +15,17 @@ author:
     affil: 1
 affiliation:
   - num: 1
-    address: Neurocognitive Processing Laboratory, Department of Cognitive Science, Jagiellonian University, Krakow, Poland
+    address: Department of Cognitive Science, Jagiellonian University, Krakow, Poland
 column_numbers: 3
 logoright_name: media/logo_kogni_transparent.png
 logoleft_name: media/logo_uj_transparent.png
-logocenter_name: media/logo_uj_transparent.png
+logocenter_name: media/qr-code-transparent.png
 title_textsize: "65pt"
-main_textsize: "150pt"
-main_findings:  Varying **cue-stimulus** interval **marginally affects** the sensory **discrimination performance** in the **antisaccade** task
+main_textsize: "140pt"
+body_textsize: "44px"
+poster_width: "33.1in"
+poster_height: "46.8in"
+main_findings:  Varying **cue-stimulus** interval **negligibly affects** the sensory **discrimination performance** in the **antisaccade** task
 output: 
   posterdown::posterdown_betterport:
     self_contained: false
@@ -50,7 +53,7 @@ library(latex2exp)
 Whether the stimulus discrimination performance `increases` (e.g., due to goal strengthening),
 `decreases` (e.g., due to vigilance decay), or `varies periodically` (e.g., along attentional rhythms) as a
 function of time elapsing between task onset (fixation point, cue) and stimulus (cue-stimulus interval;
-CSI) is debated in the current literature on attention, and so far the findings have **not been unequivocal**.
+CSI) is debated in the current literature on attention, and so far the findings **are equivocal**.
 
 
 # Method
@@ -65,13 +68,13 @@ separated by a `blank screen` shown for **CSI ranging**.
 
 We conducted two experiments, one with lower resolution (less trials per participant) but a larger
 sample and the other with higher resolution but a smaller
-sample. Both data sets were analyzed in the same way.
+sample.
 
 **`Param`** | <span style="color:#a1c549">Bigger low-res</span> | <span style="color:#ce8dff">Smaller high-res</span> |
 |:-----------------:|:-------------------:|:---------------------:|
 | **N**             |            150      |            40         |
 | **Sampling freq** |      60 Hz          |            120 Hz     |
-| **CSI Step**      |        16.(6) ms    |      8.(3) ms         |
+| **CSI Step**      |        16.6 ms      |         8.3 ms        |
 | **CSI Range**     |   350-1000 ms       |    400-900 ms         |
 | **Unique CSI's**  |        40           |        61             |
 | **Reps per CSI**  |        11           |          104          |
@@ -127,7 +130,7 @@ data.B.aggr <-
 
 ```
 
-```{r fig.width=10.7, fig.height=5.5}
+```{r fig.width=10.7, fig.height=5.2}
 data.B.aggr |> 
   filter(Part_id == "157K25") |>
   ggplot(mapping = aes(x=t, y=mean_corr)) +
@@ -174,7 +177,7 @@ tB.t <- t.test(betas.B$beta)
 ```
 
 
-```{r fig.width=10.7, fig.height=5.5}
+```{r fig.width=10.2, fig.height=5.2}
 tA <- TeX(apa_print(tA.shapiro)$full_result)
 tB <- TeX(apa_print(tB.shapiro)$full_result)
 ggplot() +
@@ -206,9 +209,9 @@ ggplot() +
   annotate("text",x = -.00024,y = 3500,label = tB,parse = TRUE,size = 7, colour = '#ce8dff') 
 ```
 
-The colored curves represents beta variable distribution for <span style="color:#a1c549">bigger low-res</span> and <span style="color:#ce8dff">smaller high-res</span> datasets respectively. 
+The colored curves represent beta variable distribution for <span style="color:#a1c549">bigger low-res</span> and <span style="color:#ce8dff">smaller high-res</span> datasets respectively. 
 Both curves did not show evidence of non-normality and are showing significant difference from a zero distribution (**p<.001**).
-However, both effects are, in our opinion, negligibly small (<span style="color:#a1c549">4.15 pp </span> and <span style="color:#ce8dff">4.58 pp </span> of increased avg. accuracy over 1000 ms).  
+However, both effects are, in our opinion, negligibly small (<span style="color:#a1c549">4.15% </span> and <span style="color:#ce8dff">4.58% </span> of increased avg. accuracy over 1000 ms).  
 
 ## Periodic variation
 The periodicity analysis was performed on the frequency spectrum of <span style="color:#ce8dff">smaller high-res</span> dataset calculated for each
@@ -220,7 +223,7 @@ comparison of the power obtained in the experiment with the permutationally dete
 level was done using both `Holmes adjusted` and raw directional p-tests.
 
 ```{r}
-per.data <- tribble(~ "Frequency [in Hz]", ~ Estimate, ~ "p value", ~ "p adjusted",
+per.data <- tribble(~ "Frequency [Hz]", ~ Estimate, ~ "p value", ~ "p adj",
         0, 0.086, .85, ">.99",
         1.277,0.435,.3, ">.99",
         2.553,0.612,.99,"> .99",
