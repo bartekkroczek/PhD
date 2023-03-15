@@ -1,6 +1,5 @@
 # PhD
-Transparency repository for my doctoral dissertation entitled ***"Does attention in perceptual
-tasks change over time?"***
+Transparency repository for my doctoral dissertation entitled ***"Does varying cue-stimulus interval affect the sensory discrimination performance in the antisaccade task?"***
 
 Here you can find everything to reproduce the experiments I performed, i.e.
 the codes of the experimental procedures, raw and processed data, notebooks
@@ -22,8 +21,8 @@ the stimulus discrimination performance in the antisaccade task.
 ### Experiment 1
 **Research Question**: Does varying cue-stimulus interval affect the sensory
 discrimination performance in the antisaccade task?  
-**Task**: Antisaccade task. [Description here](google.com) and [Repository here.](https://github.com/bartekkroczek/antisaccade-task)  
-**Task specification**: [1a here](google.com) and [1b here](google.com)
+**Task**: Antisaccade task. [Description here](https://docs.google.com/document/d/e/2PACX-1vTdtiVdfJ3BVCoUMFcsVi3xZXQk08efQfc55sXEu_L40qnHooZhYdYcxEvgD9SZfGG9s_upo95L6u6h/pub) and [Repository here.](https://github.com/bartekkroczek/antisaccade-task)  
+**Task specification**: [1a here](https://github.com/bartekkroczek/antisaccade-task/blob/main/low_res_config.yaml) and [1b here](https://github.com/bartekkroczek/antisaccade-task/blob/main/high_res_config.yaml)
 
 **Data A:** 150 participants, CSI range 216-1000 wth 16.(6) ms step [Available here](Experiment_1/Data/Data_A)  
 **Data B:** 40 participants, CSI range 400-900ms in 8.(3) ms step. [Available here](Experiment_1/Data/Data_B)  
@@ -36,6 +35,7 @@ discrimination performance in the antisaccade task?
 #### Analysis 1
 **Question:** Does stimulus discrimination performance oscillate?  
 **Description:** xxxxxxxxxxxxxxxxxx. [Details here](google.com)  
+**DataSet:** Data A  
 **Notebook:** [Here](google.com)  
 **Result:** xxxxxxxxxxxxx
 #### Analysis 2
@@ -54,6 +54,9 @@ in the sensory discrimination performance occurs in a broader CSI range?
 **Task specification**: [here](google.com)   
 **Data:** Up to 300, during study Y
 
+### Simulation 1 
+
+**Research question:** Why the commonly reported behavioral oscillations did not show up in our results?
 
 ### Experiment 3 
 
@@ -64,9 +67,6 @@ temporal order judgement appear/disappear [(details here)](google.com)
 **Tasks specifications:**   
 **Data:** 50 participants
 
-### Simulation 1 
-
-**Research question:** Why the commonly reported behavioral oscillations did not show up in our results?
 
 ## Manuscript
 

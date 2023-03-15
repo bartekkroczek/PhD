@@ -1,0 +1,179 @@
+---
+title             : "Does varying cue-stimulus interval affect the sensory discrimination performance in the antisaccade task?"
+shorttitle        : "Attention variance over time"
+
+author: 
+  - name          : "Bartłomiej Kroczek"
+    affiliation   : "1"
+    corresponding : yes    # Define only one corresponding author
+    # address       : "Postal address"
+    email         : "bartek.kroczek@doctoral.uj.edu.pl"
+    role:         # Contributorship roles (e.g., CRediT, https://casrai.org/credit/)
+      - "Conceptualization"
+      - "Formal Analysis"
+      - "Investigation"
+      - "Methodology"
+      - "Software"
+      - "Visualization"
+      - "Validation"
+      - "Writing - Original Draft Preparation"
+      - "Writing - Review & Editing"
+  - name          : "Adam Chuderski"
+    affiliation   : "2"
+    role:
+      - "Conceptualization"
+      - "Methodology"
+      - "Writing - Review & Editing"
+      - "Supervision"
+
+affiliation:
+  - id            : "1"
+    institution   : "Institute of Psychology, Jagiellonian University, Krakow, Poland"
+  - id            : "2"
+    institution   : "Department of Cognitive Science, Jagiellonian University, Krakow, Poland"
+
+authornote: |
+
+  This manuscript is the doctoral thesis of Bartłomiej Kroczek, prepared under the supervision of professor Adam Chuderski, implemented as part of the CogNes 19 doctoral program.
+  
+  All code and data used in performing this research are publicly available at `https://github.com/bartekkroczek/PhD`
+
+abstract: |
+  One or two sentences providing a **basic introduction** to the field,  comprehensible to a scientist in any discipline.
+  
+  Two to three sentences of **more detailed background**, comprehensible  to scientists in related disciplines.
+  
+  One sentence clearly stating the **general problem** being addressed by  this particular study.
+  
+  One sentence summarizing the main result (with the words "**here we show**" or their equivalent).
+  
+  Two or three sentences explaining what the **main result** reveals in direct comparison to what was thought to be the case previously, or how the  main result adds to previous knowledge.
+  
+  One or two sentences to put the results into a more **general context**.
+  
+  Two or three sentences to provide a **broader perspective**, readily comprehensible to a scientist in any discipline.
+  
+  <!-- https://tinyurl.com/ybremelq -->
+  
+keywords          : "attentional vigilance, antisaccade task, processing speed"
+wordcount         : "X"
+
+bibliography      : "r-references.bib"
+
+floatsintext      : no
+linenumbers       : yes
+draft             : yes
+mask              : no
+
+figurelist        : no
+tablelist         : no
+footnotelist      : no
+
+classoption       : "man"
+output            : papaja::apa6_pdf
+---
+
+```{r setup, include = FALSE}
+library("papaja")
+r_refs("r-references.bib")
+```
+
+```{r analysis-preferences}
+# Seed for random number generation
+set.seed(42)
+knitr::opts_chunk$set(cache.extra = knitr::rand_seed)
+```
+
+# Rozdział 1 
+Tu mam najtrudniej, bo złapałem się na luce w rozumieniu. Jaki - z naszej perspektywy - jest związek między attentional vigilance a cognitive control? Czemu torturując zadanie antysakadowe które ma być miarą kontroli wysnuwamy wnioski o uwadze? To jest tak, że cognitive control to jakiś puzel, który służy do budowania teorii jak działa uwaga (i pewnie nie tylko)? 
+
+Pomijając powyższe, wyobrażam sobie takie fakty:
+
+* Argumenty za tym, że uwaga jest zmienna w czasie (bo mamy np. mrugnięcie uwagowe, saccadic supression, oscylacyjne teorie wszystkiego itp).
+* Wykazanie, że zadanie antysakadowe jest powszechnie poważane jako dobra miara kontroli 
+* Brakujący mi klej między kontrolą a uwagą
+* Argumenty literaturowe za istnieniem trendu i oscylacji (behawioralnych) w varying cue-stimuli interval
+* Pointa, że to się klei, że skoro uwaga ma być niestabilna w czasie, to i zadanie je mierzące powinno być niestabilne w czasie i to właśnie pokazuje literatura. (Znów, brak kleju)
+
+# Rozdział 2
+Zarysowanie problemu, a mianowicie, że chcemy na własne oczy sprawdzić co to się dzieje w tym varying cue-stimuli interval. 
+Tutaj nie wiem na ile warto/należy spoilerować zakończenie.
+
+# Chapter III. What our data shows? 
+
+To examine the role of CSI in stimulus discrimination, we used the antisaccade 
+task with CSI varied in millisecond steps. On each trial, participants were shown for 250 ms
+either left or right arrow as a target, and their task was to press the appropriate
+key. The arrows were randomly displayed on either the left or right side of the
+screen. The stimulus was accompanied by a red dot briefly flashing on the
+opposite side of the screen, which should be ignored. The fixation point and
+the red dot/stimulus presentation were separated by a blank screen shown for
+CSI ranging from 400 to 900ms. We conducted two experiments, one with lower
+resolution (less trials per participant) but a larger sample (N=150, CSI sampling
+frequency 60Hz) and the other with higher resolution but a smaller sample
+(N=40, CSI sampling frequency 120Hz). Both data sets were analyzed in the
+same way. For each participant, the mean accuracy was calculated for each CSI
+timepoint. These mean accuracy values were plotted as a function of increasing
+CSI, with a single curve created for each person.
+
+
+## Anti-saccade task
+
+The antisaccade task is one of the most popular measures of cognitive control.
+On each trial, participants were shown for 250 ms either left, right, 
+up or down arrow as a target, and their task was to press the appropriate key.
+The arrows were randomly displayed on either the left or right side of the screen.
+The stimulus was accompanied by a red dot briefly flashing on the opposite side
+of the screen, which should be ignored. The fixation point at the very beginning 
+of a trial, and the red dot/stimulus presentation were separated by a blank screen
+shown for a ranging time, called the cross-stimuli interval (CSI).  
+
+## Data preparation
+
+
+## Sekcja 3.1 
+Dane N=150, niskie próbkowanie CSI 200-1000 ms. Już zebrane i przeanalizowane. 
+  Wniosek - jest trend, ale malutki, dużo mniejszy niż w literaturze (i hope so)
+    
+### Methods
+We report how we determined our sample size, all data exclusions (if any), all manipulations, and all measures in the study. <!-- 21-word solution (Simmons, Nelson & Simonsohn, 2012; retrieved from http://ssrn.com/abstract=2160588) -->
+
+## Sekcja 3.2
+Dane N=40 wysokie próbkowanie, CSI 400-900 ms. Już zebrane i przeanalizowane. Wniosek, brak trendu, zarówno w analizie zbiorczej dla każdej z częstotliwości (to od Tomasza) jak i różnic indywidualnych (kończę robić)
+    
+## Sekcja 3.3 
+Dane N=Przyzwoicie_Ale_Nie_Za_Duzo niskie próbkowanie, CSI 500(?)-3000(?)ms Nie zebrane. 
+  Wniosek, daj Bóg, że trend znika.
+
+# Rozdział 4 
+
+Dlaczego nasze wyniki nie pokrywają się z literaturą? 
+    Sekcja 4.1 Trend
+    Bo efekt wisiał na punkcie w 200 ms czyli na mrugnięciu uwagowym.
+    Sekcja 4.2 Oscylacje
+    Wnioski i symulacje z  artykułu metodologicznego o niepoprawnym preprocessigu. W końcu jest to już, marnie bo marnie, ale napisane. 
+ 
+Konkluzja: Nasze dane pokazują, że cue-stimuli interval nie oscyluje i ma bardzo mały/nie ma efektu trendu. 
+
+# Rozdział 5
+Nasze obserwacje nie zgadzają się z obecnym stanem rzeczy. Co gorsza, twierdzimy że wiemy dlaczego. Nasi biografowie nazwą to zjawisko Kroczek&Chuderski Tension w analogii do Hubble Tension - największego kryzysu współczesnej kosmologii. W tym momencie czytelnik ma już mokre poty i zjadł wszystkie paznokcie. Gdy myśli, że jego nerwy nie mogą być już bardziej napięte to walimy go w łeb obuchem stawiając pytanie, czy w takim razie uwaga/kontrola jest jednak stała w czasie, czy zadanie antysakadowe nie jest dobrą miarą kontroli. Czytelnik mdleje.
+
+# Rozdział 6 
+
+W oparciu o Roudera stawiamy tezę, że zadanie antysakadowe nie mierzy kontroli i przedstawiamy kolejny eksperyment który temu dowodzi. 
+Opisujemy eksperyment i pokazujemy, że zadanie antysakadowe nie tyle jest marną miarą kontroli, co jest zadaniem na processing speed. 
+
+# Rozdział 7 
+Konkluzja pracy, w jakich obszarach (teorie uwagi) nasze wnioski mogą namieszać. Future directions. Tłum wiwatuje w ekstazie. Kurtyna. 
+
+
+<!-- We used `r cite_r("r-references.bib")` for all our analyses. -->
+
+
+
+<!-- \newpage -->
+
+# References
+
+::: {#refs custom-style="Bibliography"}
+:::

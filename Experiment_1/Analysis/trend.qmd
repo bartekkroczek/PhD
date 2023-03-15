@@ -1,0 +1,238 @@
+---
+title: "Trend Analysis"
+author: "Bartek Kroczek"
+format: html
+editor: visual
+---
+
+## Does varying cue-stimulus interval affect the sensory discrimination performance in the antisaccade task?
+
+```{r}
+#| include: false
+#| label: load-packages
+library(tidyverse)
+library(readr)
+library(broom)
+library(papaja)
+library(scales)
+library(latex2exp)
+```
+
+## DATA A
+
+***150 participants, CSI range 216-1000 with 16.(6) ms step***
+
+```{r}
+#| label: load-data
+#| include: false
+
+data.A.names <-
+  list.files('../Data/Data_A/', full.names = T, pattern = '*.csv$')
+data.A <- read_csv(data.A.names)
+```
+
+```{r}
+#| include: false
+data.A.aggr <-
+  data.A |>
+  filter(Trial_type == "experiment", Rt > 0.0) |> # Experiment and no timeout
+  select(PART_ID, CSI, Corr) |>
+  mutate(t = CSI * 16.6) |>
+  group_by(PART_ID, t) |>
+  summarise(mean_corr = mean(Corr)) 
+```
+
+```{r}
+#| echo: false
+data.A.aggr |> 
+  filter(PART_ID == "140M21") |>
+  ggplot(mapping = aes(x=t, y=mean_corr)) +
+  geom_point() +
+  geom_line() + 
+  geom_smooth(method='lm', formula = y ~ x) +
+  theme_apa() +
+  ggtitle("Single participant data", subtitle = "We've seen oscillations here in the past") + 
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "time in [ms]", y = "Avg correctness in [0.0 - 1.0] range")
+```
+
+We fit a regression line for each of the participants. We then create a variable from the beta slope coefficients. Further analyzes are performed on the newly created variable.
+
+```{r}
+#| include: false
+betas.A.full <- data.A.aggr |>
+  do(model = lm(mean_corr ~ t, data = .)) |>
+  mutate(beta  = model$coefficients[[2]]) 
+  
+
+betas.A.400 <- data.A.aggr |>
+  filter(t > 400) |> 
+  do(model = lm(mean_corr ~ t, data = .)) |>
+  mutate(beta  = model$coefficients[[2]]) 
+```
+
+```{r}
+#| echo: false
+ggplot() +
+  geom_density(data = betas.A.full,aes(x=beta, colour = 'Full Beta variable')) +
+  geom_density(data = betas.A.400,aes(x=beta, colour = 'Beta variable > 400 ms')) +
+  stat_function(
+    aes(colour = "Gaus, Mean=0"),
+    fun = dnorm,
+    n = 150,
+    args = list(mean = 0, sd = sd(betas.A.full$beta))
+  ) +
+  theme_apa() +
+  ggtitle("Beta variable looks normally-distributed",
+          subtitle = "With expected value slightly above zero") +
+  labs(x = "Beta coeffs in [no unit]", y = "", 
+       caption = "The variance of both curves were equated") +
+  scale_x_continuous(labels = label_comma(),  limits = c(-0.0003, 0.0003)) +
+  theme(axis.text.y = element_blank(),  #remove y axis labels
+        axis.ticks.y = element_blank())  #remove y axis ticks)
+```
+
+```{r}
+#| include: false
+tA.shapiro.full <- shapiro.test(betas.A.full$beta)
+tA.t.full <- t.test(betas.A.full$beta)
+tA.shapiro.400 <- shapiro.test(betas.A.400$beta)
+tA.t.400 <- t.test(betas.A.400$beta)
+```
+```{r}
+print(tA.shapiro.400)
+print(tA.t.400)
+```
+
+
+### Conclusion
+
+The Shapiro-Wilk test was performed on the betas variable and did not show evidence
+of non-normality (`r apa_print(tA.shapiro.full)$full_result`). Based on this outcome, 
+and after visual examination of the density plot of betas and the QQ plot, 
+we decided to use a parametric one-sample t-test that compares beta variable mean 
+with the zero. The t-test showed that while the alternative hypothesis that the
+true mean is not 0 is true, the effect size is so small that it is rounded to zero (`r apa_print(tA.t.full)$full_result`). 
+
+## Data B
+
+```{r}
+#| include: false
+data.B.names <- c(
+  list.files(
+    '../Data/Data_B/Cohort_1/',
+    full.names = T,
+    pattern = "*.csv$"
+  ),
+  list.files(
+    '../Data/Data_B/Cohort_2/',
+    full.names = T,
+    pattern = "*.csv$"
+  )
+)
+
+data.B <-
+  read_csv(data.B.names) |>
+  separate(PART_ID, c("Part_id", "Session"), sep = -2)
+```
+```{r}
+#| include: false
+data.B.aggr <-
+  data.B |>
+  filter(Trial_type == "experiment", Rt > 0.0) |> # Experiment and no timeout
+  select(Part_id, CSI, Corr) |>
+  mutate(t = CSI * 8.3) |>
+  group_by(Part_id, t) |>
+  summarise(mean_corr = mean(Corr)) 
+```
+
+```{r}
+#| echo: false
+data.B.aggr |> 
+  filter(Part_id == "157K25") |>
+  ggplot(mapping = aes(x=t, y=mean_corr)) +
+  geom_point() +
+  geom_line() + 
+  geom_smooth(method='lm', formula = y ~ x) +
+  theme_apa() +
+  ggtitle("Single participant data", subtitle = "We've seen oscillations here in the past") + 
+  labs(x = "time in [ms]", y = "Avg correctness in [0.0 - 1.0] range")
+```
+```{r}
+#| include: false
+betas.B <- data.B.aggr |>
+  do(model = lm(mean_corr ~ t, data = .)) |>
+  mutate(beta  = model$coefficients[[2]]) 
+  
+```
+
+```{r}
+#| echo: false
+betas.B |>
+  ggplot(mapping = aes(x = beta)) +
+  geom_density(aes(colour = 'Beta variable')) +
+  stat_function(
+    aes(colour = "Gauss, Mean=0"),
+    fun = dnorm,
+    n = 150,
+    args = list(mean = 0, sd = sd(betas.B$beta))
+  ) +
+  theme_apa() +
+  ggtitle("Beta variable looks normally-distributed",
+          subtitle = "With expected value slightly above zero") +
+  labs(x = "Beta coeffs in [no unit]", y = "", 
+       caption = "The variance of both curves were equated") +
+  scale_x_continuous(labels = label_comma(), limits = c(-0.0003, 0.0003)) +
+  theme(axis.text.y = element_blank(),  #remove y axis labels
+        axis.ticks.y = element_blank())  #remove y axis ticks)
+
+```
+```{r}
+#| include: false
+tB.shapiro <- shapiro.test(betas.B$beta)
+tB.t <- t.test(betas.B$beta)
+```
+
+```{r}
+print(tB.shapiro)
+print(tB.t)
+```
+
+ ## Merged 
+ 
+```{r}
+tA <- TeX(apa_print(tA.shapiro.full)$full_result)
+tA.350 <- TeX(apa_print(tA.shapiro.350)$full_result)
+tB <- TeX(apa_print(tB.shapiro)$full_result)
+ggplot() +
+  geom_density(data = betas.A.full, aes(x = beta), color = '#f99a93') +
+  geom_density(data = betas.A.350, aes(x = beta), color = '#a1c549') +
+  geom_density(data = betas.B, aes(x = (1.5 * beta)), color = '#ce8dff') +
+  stat_function(
+    fun = dnorm,
+    args = list(mean = 0, sd = sd(betas.A.full$beta))
+    ,
+    n = 150,
+    color = '#43d0d3'
+  ) +
+  theme_apa() +
+  ggtitle("Beta coefs. distribution", subtitle = "Plotted against an ideal gaussian cenetered at zero (blue)") +
+  labs(x = "", y = "") +
+  scale_x_continuous(labels = label_comma(),  limits = c(-0.0003, 0.0003)) +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    legend.position = "none",
+    plot.title = element_text(size = 28, face = "bold"),
+    plot.subtitle = element_text(color = '#43d0d3')
+  ) +  #remove y axis ticks)
+  annotate("text",
+           x = -.00015,
+           y = 8000,
+           label = "All curves did not show evidence of non-normality") +
+  annotate("text",x = -.00024,y = 7200,label = tA,parse = TRUE,colour = '#f99a93') +
+  annotate("text",x = -.00024,y = 6400,label = tA.400,parse = TRUE,colour = '#a1c549') +
+  annotate("text",x = -.00024,y = 5600,label = tB,parse = TRUE,colour = '#ce8dff') 
+```
+ 
+ 

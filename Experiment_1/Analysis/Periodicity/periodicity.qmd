@@ -1,0 +1,84 @@
+---
+title: "Periodicity"
+author: "Bartek Kroczek"
+format: html
+editor: visual
+---
+
+```{r}
+#| include: false
+#| label: load-packages
+library(tidyverse)
+library(readr)
+library(broom)
+library(papaja)
+library(scales)
+library(latex2exp)
+library(ts.extend)
+```
+
+```{r}
+#| include: false
+data.B.names <- c(
+  list.files(
+    '../../Data/Data_B/Cohort_1/',
+    full.names = T,
+    pattern = "*.csv$"
+  ),
+  list.files(
+    '../Data/Data_B/Cohort_2/',
+    full.names = T,
+    pattern = "*.csv$"
+  )
+)
+
+data.B <-
+  read_csv(data.B.names) |>
+  separate(PART_ID, c("Part_id", "Session"), sep = -2)
+```
+
+```{r}
+#| include: false
+data.B.aggr <-
+  data.B |>
+  filter(Trial_type == "experiment", Rt > 0.0) |> # Experiment and no timeout
+  select(Part_id, CSI, Corr) |>
+  mutate(t = CSI * 8.3) |>
+  group_by(Part_id, t) |>
+  summarise(mean_corr = mean(Corr)) 
+```
+
+```{r}
+#| echo: false
+data.B.aggr |> 
+  filter(Part_id == "157K25") |>
+  ggplot(mapping = aes(x=t, y=mean_corr)) +
+  geom_point() +
+  geom_line() + 
+  geom_smooth(method='lm', formula = y ~ x) +
+  theme_apa() +
+  ggtitle("Single participant data", subtitle = "We've seen oscillations here in the past") + 
+  labs(x = "time in [ms]", y = "Avg correctness in [0.0 - 1.0] range")
+```
+```{r}
+#Generate mock data
+set.seed(1)
+m      <- 100
+SIGNAL <- 0.8*sin(0.3*(1:m))
+NOISE  <- rnorm(m)
+SERIES <- SIGNAL + NOISE
+
+#Conduct permutation-spectrum test
+TEST <- spectrum.test(SERIES, sims=10)
+
+```
+```{r}
+v <-data.B.aggr |> 
+  filter(Part_id == "AC-K-26K26") |>
+  pull(mean_corr)
+# 
+TEST <- spectrum.test(v)
+plot(TEST)
+# print(c(x, TEST$p.value))
+```
+
