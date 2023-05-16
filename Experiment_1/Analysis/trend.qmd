@@ -99,20 +99,15 @@ tA.t.full <- t.test(betas.A.full$beta)
 tA.shapiro.400 <- shapiro.test(betas.A.400$beta)
 tA.t.400 <- t.test(betas.A.400$beta)
 ```
+
 ```{r}
 print(tA.shapiro.400)
 print(tA.t.400)
 ```
 
-
 ### Conclusion
 
-The Shapiro-Wilk test was performed on the betas variable and did not show evidence
-of non-normality (`r apa_print(tA.shapiro.full)$full_result`). Based on this outcome, 
-and after visual examination of the density plot of betas and the QQ plot, 
-we decided to use a parametric one-sample t-test that compares beta variable mean 
-with the zero. The t-test showed that while the alternative hypothesis that the
-true mean is not 0 is true, the effect size is so small that it is rounded to zero (`r apa_print(tA.t.full)$full_result`). 
+The Shapiro-Wilk test was performed on the betas variable and did not show evidence of non-normality (`r apa_print(tA.shapiro.full)$full_result`). Based on this outcome, and after visual examination of the density plot of betas and the QQ plot, we decided to use a parametric one-sample t-test that compares beta variable mean with the zero. The t-test showed that while the alternative hypothesis that the true mean is not 0 is true, the effect size is so small that it is rounded to zero (`r apa_print(tA.t.full)$full_result`).
 
 ## Data B
 
@@ -135,6 +130,7 @@ data.B <-
   read_csv(data.B.names) |>
   separate(PART_ID, c("Part_id", "Session"), sep = -2)
 ```
+
 ```{r}
 #| include: false
 data.B.aggr <-
@@ -158,6 +154,7 @@ data.B.aggr |>
   ggtitle("Single participant data", subtitle = "We've seen oscillations here in the past") + 
   labs(x = "time in [ms]", y = "Avg correctness in [0.0 - 1.0] range")
 ```
+
 ```{r}
 #| include: false
 betas.B <- data.B.aggr |>
@@ -187,6 +184,7 @@ betas.B |>
         axis.ticks.y = element_blank())  #remove y axis ticks)
 
 ```
+
 ```{r}
 #| include: false
 tB.shapiro <- shapiro.test(betas.B$beta)
@@ -198,8 +196,8 @@ print(tB.shapiro)
 print(tB.t)
 ```
 
- ## Merged 
- 
+\## Merged
+
 ```{r}
 tA <- TeX(apa_print(tA.shapiro.full)$full_result)
 tA.350 <- TeX(apa_print(tA.shapiro.350)$full_result)
@@ -234,5 +232,3 @@ ggplot() +
   annotate("text",x = -.00024,y = 6400,label = tA.400,parse = TRUE,colour = '#a1c549') +
   annotate("text",x = -.00024,y = 5600,label = tB,parse = TRUE,colour = '#ce8dff') 
 ```
- 
- 
