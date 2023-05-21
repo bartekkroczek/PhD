@@ -8,7 +8,7 @@ dat$sub=as.integer(as.factor(dat$sub))
 # {r,cleanFixed}
 goodParticipants= (dat$sub != 26)
 goodBlock=dat$blk>3
-goodTrial.Fix=dat$trl>15
+goodTrial.Fix=dat$trl>10
 clean=dat[goodParticipants &goodBlock &goodTrial.Fix,]
 
 
