@@ -1,3 +1,5 @@
+EXPERIMENT 1 
+
 Part_155 is corrupted - participant wasn't cooperative. That's why .csvx suffix.
 
 Some trials was broken, particularly:
@@ -12,7 +14,13 @@ Data_A PART  69    Item 445
 
 Items was removed, original files in .csvx copies
 
+
+EXPERIMENT 2
+
 Issues: 
 RC-M-23 - Session 2; task manager was started by participant mistake
 AC-K-26 - Session 2; task manager was started by participant mistake
 AK-K-23 - Session 2; unexpected procedure crash (at the end, no data impact)
+
+
+EXPERIMENT 4

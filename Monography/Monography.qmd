@@ -1,0 +1,99 @@
+---
+title:  Does varying preparatory delay interval affect the sensory discrimination performance in the antisaccade task?
+subtitle: PDI impact on attention
+author:
+  - name: Bartłomiej Kroczek
+    email: bartek.kroczek@doctoral.uj.edu.pl
+    affiliations: 
+        - id: JU
+          name: Institute of Psychology
+          department: Jagiellonian University
+          city: Cracow
+          country: Poland
+    attributes:
+        corresponding: true
+    note: |
+      Conceptualization, Formal Analysis, Investigation, Methodology, Software, Visualization, Validation, Writing - Original Draft Preparation
+  - name: Adam Chuderski
+    email: adam.chuderski@uj.edu.pl
+    affiliations:
+        - id: JU
+          name: Department of Cognitive Science
+          department: Jagiellonian University
+          city: Cracow
+          country: Poland
+    note: |
+      Conceptualization, Methodology, Writing - Review & Editing, Supervision
+
+abstract: |
+  This is the abstract. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue turpis, dictum non malesuada a, volutpat eget velit. Nam placerat turpis purus, eu tristique ex tincidunt et. Mauris sed augue eget turpis ultrices tincidunt. Sed et mi in leo porta egestas. Aliquam non laoreet velit. Nunc quis ex vitae eros aliquet auctor nec ac libero. Duis laoreet sapien eu mi luctus, in bibendum leo molestie. Sed hendrerit diam diam, ac dapibus nisl volutpat vitae. Aliquam bibendum varius libero, eu efficitur justo rutrum at. Sed at tempus elit.
+keywords: 
+  - sustained attention
+  - preparatory delay interval
+  - attention over time
+date: last-modified
+bibliography: bibliography.bib
+#csl: apa6.csl
+format:
+  elsevier-pdf:
+    keep-tex: true
+    journal:
+      name: The Doctoral School in the Social Sciences 
+      formatting: preprint
+      model: 3p
+      cite-style: authoryear
+      include-in-header: 
+        text: |
+          \newpageafter{author}
+editor: 
+  markdown: 
+    wrap: 120
+---
+```{r librares, include=FALSE}
+library(showtext)
+showtext_auto()
+```
+
+\newpage
+
+# Tables coming from R
+
+Cits @Inzlicht2014-vs  and also [@Inzlicht2014-vs] Tables and @fig-antisaccade can also be generated using R chunks, as shown in  example.
+
+```{r}
+#| label: fig-antisaccade 
+#| fig-cap: The structure and timing of an antisaccade trial.  The cues were radial line segments at a certain angle relative to fixation. The targets were either X or M, and in the antisaccade trial, appeared opposite from the cue. The duration of the target was staircase adjusted, and the target was followed by a sequence of two masking displays. This sequence was highly effective and induced little response bias toward either target. Prosaccade trials were the same with the exception that the cue and target appeared at the same angle relative to fixation.
+#| fig-width: 11
+#| fig-height: 7
+#| fig-align: center
+#| out-width: 100%
+#| echo: false
+centerX=seq(.1,.92,length=6)
+centerY=seq(.8,.2,length=6)
+par(mar=c(0,0,0,0))
+plot(0:1,0:1,typ='n',axes=F)
+rect(centerX-.1,centerY-.1,centerX+.1,centerY+.1,col='darkgray')
+text(centerX[1],centerY[1],"+", cex=3.0)
+text(centerX[3]+.06,centerY[3],".",cex=4.0, col="red")
+text(centerX[4]-.06,centerY[4],"←",cex=1.2)
+text(centerX[5]-.01,centerY[5]-.06,"←    →    ↑    ↓",cex=1.1)
+text(centerX[5]-.005,centerY[5]-.085,"left      right       up     down",cex=.6)
+
+
+frameTimes=rep("",6)
+frameTimes[2]="Vary\nBetween\nExperiments"
+
+descript=rep("",6)
+descript[2]="PDI"
+descript[3]="Blinking Cue"
+descript[4]="Target"
+descript[5]="Response"
+descript[6]="Break"
+text(centerX+.1,centerY+.1,frameTimes,adj=-.15)
+text(centerX-.1,centerY-.1,descript,adj=1.15)
+```
+
+and some text and some more citation [@Inzlicht2014-vs].
+
+# References {.unnumbered}
+
