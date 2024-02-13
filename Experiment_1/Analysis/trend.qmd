@@ -2,7 +2,7 @@
 title: "Trend Analysis"
 author: "Bartek Kroczek"
 format: html
-editor: visual
+editor: source
 ---
 
 ## Does varying cue-stimulus interval affect the sensory discrimination performance in the antisaccade task?
@@ -232,3 +232,39 @@ ggplot() +
   annotate("text",x = -.00024,y = 6400,label = tA.400,parse = TRUE,colour = '#a1c549') +
   annotate("text",x = -.00024,y = 5600,label = tB,parse = TRUE,colour = '#ce8dff') 
 ```
+
+
+
+```{r}
+
+# Create a mock data frame with similar trends to the ones in the image
+pdi <- seq(0, 4000, length.out=100)
+accuracy_blue <- ifelse(pdi <= 500, 80, 80)
+accuracy_green <- ifelse(pdi <= 500, 60, 60 + 0.01 * (pdi - 500))
+accuracy_red <- ifelse(pdi <= 500, 50, 50 + 0.02 * (pdi - 500))
+
+data <- data.frame(
+  PDI = pdi,
+  BlueLine = accuracy_blue,
+  GreenLine = accuracy_green,
+  RedLine = accuracy_red
+)
+
+# Create the plot
+ggplot(data) +
+  geom_line(aes(x = PDI, y = BlueLine), color = "blue") +
+  geom_line(aes(x = PDI, y = GreenLine), color = "green") +
+  geom_line(aes(x = PDI, y = RedLine), color = "red") +
+  labs(title="Possible dynamics of the incremental relationship between PDI and antisaccade accuracy",
+       subtitle="Each of these three lines could be inferred to demonstrate a pattern of increment over time\nand to represent the same strength of effect.",
+       x="PDI in [ms]",
+       y="Hypothetical average correctness") +
+  geom_vline(xintercept = 500, linetype="dashed", color = "black") +
+  annotate("text", x = 500, y = 55, label = "Black dashed vertical line represents the conventional value\nafter which the influence of the attentional blink disappears", 
+           size = 3, angle = 270, hjust = 0) +
+  theme_apa() +
+  theme(plot.title = element_text(hjust = 0.5), 
+        plot.subtitle = element_text(hjust = 0.5),
+        plot.caption = element_text(hjust = 0))
+```
+
