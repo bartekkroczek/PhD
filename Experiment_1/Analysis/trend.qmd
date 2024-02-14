@@ -206,4 +206,108 @@ ggplot(data) +
   )
 ```
 
-# Fig 5. 
+# Fig 5. Beta for two ranges of PDI values
+
+```{r}
+beta_coeffs_full <- data.aggr |>
+  do(model = lm(mean_corr ~ t, data = .)) |>
+  mutate(beta  = model$coefficients[[2]])
+
+beta_coeffs_no_blink <- data.aggr |>
+  filter(t > 600) |>
+  do(model = lm(mean_corr ~ t, data = .)) |>
+  mutate(beta  = model$coefficients[[2]])
+
+# Performing Shapiro-Wilk test
+shapiro_test_full <- shapiro.test(beta_coeffs$beta)
+shapiro_test_no_blink <- shapiro.test(beta_coeffs_no_blink$beta)
+t_test <-
+  t.test(beta_coeffs$beta * 10, beta_coeffs_no_blink$beta * 10)
+
+
+# Creating LaTeX strings for the test results
+shapiro_full_latex <-
+  TeX(paste(
+    "Shapiro-Wilk: $W = ",
+    round(shapiro_test_full$statistic, 2),
+    ", p = ",
+    signif(shapiro_test_full$p.value, digits = 3),
+    "$"
+  ), output = "character")
+
+
+shapiro_no_blink_latex <-
+  TeX(paste(
+    "Shapiro-Wilk: $W = ",
+    round(shapiro_test_no_blink$statistic, 2),
+    ", p = ",
+    signif(shapiro_test_no_blink$p.value, digits = 3),
+    "$"
+  ), output = "character")
+
+
+
+
+ggplot() +
+  geom_density(data = beta_coeffs_full, aes(x = beta), color = "#DF5069") +
+  geom_density(data = beta_coeffs_no_blink, aes(x = beta), color = "#5ECF4B") +
+  theme_apa() +
+  labs(
+    title = "Beta coeff. distribution
+    <span style='color:#DF5069;'>possibly contaminated</span>
+    and
+    <span style='color:#5ECF4B;'>free from</span>
+    an attentional blink",
+    subtitle = "Although the effect appears to be half as strong,
+    the difference is **not** statistically significant",
+    x = "Beta coeffs. in pp. over 1 second inc. of PDI",
+    y = "",
+    caption = TeX(paste0("T test: ", apa_print(t_test)$full))
+  ) +
+  theme(
+    plot.title = element_markdown(lineheight = 1.1),
+    plot.subtitle = element_markdown(lineheight = 1.1),
+    legend.position = "none"
+  ) +
+  geom_vline(
+    xintercept = mean(beta_coeffs_full$beta),
+    linetype = "dashed",
+    color = "#DF5069"
+  ) +
+  geom_vline(
+    xintercept = mean(beta_coeffs_no_blink$beta),
+    linetype = "dashed",
+    color = "#5ECF4B"
+  ) +
+  scale_x_continuous(
+    labels = percent_format(scale = 1000, suffix = " pp."),
+    breaks = c(-.02, 0, .006, .02),
+    limits = c(-.03, .03)
+  ) +
+  ylim(c(0, 48)) +
+  annotate(
+    "text",
+    x = -0.008,
+    y = 40,
+    label = shapiro_full_latex,
+    parse = TRUE,
+    hjust = 1.1,
+    vjust = 1.1,
+    size = 3.5,
+    color = "#DF5069"
+  ) +
+  annotate(
+    "text",
+    x = -0.008,
+    y = 48,
+    label = shapiro_no_blink_latex,
+    parse = TRUE,
+    hjust = 1.1,
+    vjust = 2,
+    size = 3.5,
+    color = "#5ECF4B"
+  ) +
+  theme(axis.text.y = element_blank(),  #remove y axis labels
+        axis.ticks.y = element_blank())  #remove y axis ticks)
+
+```
