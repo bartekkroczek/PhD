@@ -16,6 +16,11 @@ library(broom)
 library(papaja)
 library(scales)
 library(latex2exp)
+library(scales)
+library(ggtext)
+library(latex2exp)
+library(tseries)
+
 ```
 
 ## DATA A
@@ -26,222 +31,147 @@ library(latex2exp)
 #| label: load-data
 #| include: false
 
-data.A.names <-
-  list.files('../Data/Data_A/', full.names = T, pattern = '*.csv$')
-data.A <- read_csv(data.A.names)
+data.names <-
+  list.files('../Data', full.names = T, pattern = '*.csv$')
+data.files <- read_csv(data.names)
 ```
 
 ```{r}
 #| include: false
-data.A.aggr <-
-  data.A |>
+data.aggr <-
+  data.files |>
   filter(Trial_type == "experiment", Rt > 0.0) |> # Experiment and no timeout
   select(PART_ID, CSI, Corr) |>
   mutate(t = CSI * 16.6) |>
   group_by(PART_ID, t) |>
-  summarise(mean_corr = mean(Corr)) 
+  summarise(mean_corr = 100.0 * mean(Corr)) 
 ```
+
+# Fig 2. Single participant Data
 
 ```{r}
 #| echo: false
-data.A.aggr |> 
+data.aggr |> 
   filter(PART_ID == "140M21") |>
-  ggplot(mapping = aes(x=t, y=mean_corr)) +
+  ggplot(mapping = aes(x=t, y=mean_corr/100.0)) +
   geom_point() +
   geom_line() + 
   geom_smooth(method='lm', formula = y ~ x) +
   theme_apa() +
-  ggtitle("Single participant data", subtitle = "We've seen oscillations here in the past") + 
+  ggtitle("Single participant data", 
+          subtitle = "Blue line represents linear regression fitted to data") + 
   scale_y_continuous(labels = scales::percent) +
-  labs(x = "time in [ms]", y = "Avg correctness in [0.0 - 1.0] range")
+  labs(x = "PDI in [ms]", y = "Average correctness")
 ```
 
-We fit a regression line for each of the participants. We then create a variable from the beta slope coefficients. Further analyzes are performed on the newly created variable.
+# Fig 3. Beta coeff distribution
 
 ```{r}
-#| include: false
-betas.A.full <- data.A.aggr |>
+
+beta_coeffs <- data.aggr |>
   do(model = lm(mean_corr ~ t, data = .)) |>
-  mutate(beta  = model$coefficients[[2]]) 
-  
+  mutate(beta  = model$coefficients[[2]])
 
-betas.A.400 <- data.A.aggr |>
-  filter(t > 400) |> 
-  do(model = lm(mean_corr ~ t, data = .)) |>
-  mutate(beta  = model$coefficients[[2]]) 
-```
 
-```{r}
-#| echo: false
-ggplot() +
-  geom_density(data = betas.A.full,aes(x=beta, colour = 'Full Beta variable')) +
-  geom_density(data = betas.A.400,aes(x=beta, colour = 'Beta variable > 400 ms')) +
-  stat_function(
-    aes(colour = "Gaus, Mean=0"),
-    fun = dnorm,
-    n = 150,
-    args = list(mean = 0, sd = sd(betas.A.full$beta))
-  ) +
-  theme_apa() +
-  ggtitle("Beta variable looks normally-distributed",
-          subtitle = "With expected value slightly above zero") +
-  labs(x = "Beta coeffs in [no unit]", y = "", 
-       caption = "The variance of both curves were equated") +
-  scale_x_continuous(labels = label_comma(),  limits = c(-0.0003, 0.0003)) +
-  theme(axis.text.y = element_blank(),  #remove y axis labels
-        axis.ticks.y = element_blank())  #remove y axis ticks)
-```
+# Performing Shapiro-Wilk test
+shapiro_test <- shapiro.test(beta_coeffs$beta)
 
-```{r}
-#| include: false
-tA.shapiro.full <- shapiro.test(betas.A.full$beta)
-tA.t.full <- t.test(betas.A.full$beta)
-tA.shapiro.400 <- shapiro.test(betas.A.400$beta)
-tA.t.400 <- t.test(betas.A.400$beta)
-```
+# Performing Jarque-Bera test
+jarque_bera_test <- jarque.bera.test(beta_coeffs$beta)
 
-```{r}
-print(tA.shapiro.400)
-print(tA.t.400)
-```
+# Creating LaTeX strings for the test results
+shapiro_latex <-
+  TeX(paste(
+    "Shapiro-Wilk: $W = ",
+    round(shapiro_test$statistic, 2),
+    ", p = ",
+    signif(shapiro_test$p.value, digits = 3),
+    "$"
+  ), output = "character")
 
-### Conclusion
 
-The Shapiro-Wilk test was performed on the betas variable and did not show evidence of non-normality (`r apa_print(tA.shapiro.full)$full_result`). Based on this outcome, and after visual examination of the density plot of betas and the QQ plot, we decided to use a parametric one-sample t-test that compares beta variable mean with the zero. The t-test showed that while the alternative hypothesis that the true mean is not 0 is true, the effect size is so small that it is rounded to zero (`r apa_print(tA.t.full)$full_result`).
 
-## Data B
-
-```{r}
-#| include: false
-data.B.names <- c(
-  list.files(
-    '../Data/Data_B/Cohort_1/',
-    full.names = T,
-    pattern = "*.csv$"
-  ),
-  list.files(
-    '../Data/Data_B/Cohort_2/',
-    full.names = T,
-    pattern = "*.csv$"
+jarque_bera_latex <-
+  TeX(
+    paste(
+      "Jarque-Bera: $\\chi^2(",
+      jarque_bera_test$parameter,
+      ") = ",
+      round(jarque_bera_test$statistic, 2),
+      ", p = ",
+      signif(jarque_bera_test$p.value, digits = 3),
+      "$"
+    )
   )
-)
 
-data.B <-
-  read_csv(data.B.names) |>
-  separate(PART_ID, c("Part_id", "Session"), sep = -2)
-```
 
-```{r}
-#| include: false
-data.B.aggr <-
-  data.B |>
-  filter(Trial_type == "experiment", Rt > 0.0) |> # Experiment and no timeout
-  select(Part_id, CSI, Corr) |>
-  mutate(t = CSI * 8.3) |>
-  group_by(Part_id, t) |>
-  summarise(mean_corr = mean(Corr)) 
-```
 
-```{r}
-#| echo: false
-data.B.aggr |> 
-  filter(Part_id == "157K25") |>
-  ggplot(mapping = aes(x=t, y=mean_corr)) +
-  geom_point() +
-  geom_line() + 
-  geom_smooth(method='lm', formula = y ~ x) +
-  theme_apa() +
-  ggtitle("Single participant data", subtitle = "We've seen oscillations here in the past") + 
-  labs(x = "time in [ms]", y = "Avg correctness in [0.0 - 1.0] range")
-```
-
-```{r}
-#| include: false
-betas.B <- data.B.aggr |>
-  do(model = lm(mean_corr ~ t, data = .)) |>
-  mutate(beta  = model$coefficients[[2]]) 
-  
-```
-
-```{r}
-#| echo: false
-betas.B |>
-  ggplot(mapping = aes(x = beta)) +
-  geom_density(aes(colour = 'Beta variable')) +
+ggplot() +
+  geom_density(data = beta_coeffs, aes(x = beta), color = "#DF5069") +
   stat_function(
-    aes(colour = "Gauss, Mean=0"),
     fun = dnorm,
-    n = 150,
-    args = list(mean = 0, sd = sd(betas.B$beta))
+    n = 1000,
+    args = list(mean = 0, sd = sd(beta_coeffs$beta)),
+    color = "#0D94E5"
   ) +
   theme_apa() +
-  ggtitle("Beta variable looks normally-distributed",
-          subtitle = "With expected value slightly above zero") +
-  labs(x = "Beta coeffs in [no unit]", y = "", 
-       caption = "The variance of both curves were equated") +
-  scale_x_continuous(labels = label_comma(), limits = c(-0.0003, 0.0003)) +
+  labs(
+    title = "<span style='color:#DF5069;'>Beta coeff.</span> plotted over a
+          <span style='color:#0D94E5;'> normal distribution with mean = 0 </span>",
+    subtitle = "<span style='color:#DF5069;'>Beta coeff.</span>
+       is **normally distributed** with expected value at 6 pp.",
+    x = "Beta coeffs. in pp. over 1 second inc. of PDI",
+    y = "",
+    caption = "The variance of both curves were equated"
+  ) +
+  theme(
+    plot.title = element_markdown(lineheight = 1.1),
+    plot.subtitle = element_markdown(lineheight = 1.1),
+    legend.position = "none"
+  ) +
+  geom_vline(xintercept = mean(beta_coeffs$beta),
+             linetype = "dashed") +
+  scale_x_continuous(
+    labels = percent_format(scale = 1000, suffix = " pp."),
+    breaks = c(-.02, 0, .006, .02),
+    limits = c(-.03, .03)
+  ) +
+  ylim(c(0, 50)) +
+  annotate(
+    "text",
+    x = -0.008,
+    y = 40,
+    label = shapiro_latex,
+    parse = TRUE,
+    hjust = 1.1,
+    vjust = 1.1,
+    size = 3.5
+  ) +
+  annotate(
+    "text",
+    x = -0.0058,
+    y = 50,
+    label = jarque_bera_latex,
+    parse = TRUE,
+    hjust = 1.1,
+    vjust = 2,
+    size = 3.5
+  ) +
   theme(axis.text.y = element_blank(),  #remove y axis labels
         axis.ticks.y = element_blank())  #remove y axis ticks)
 
 ```
 
-```{r}
-#| include: false
-tB.shapiro <- shapiro.test(betas.B$beta)
-tB.t <- t.test(betas.B$beta)
-```
 
-```{r}
-print(tB.shapiro)
-print(tB.t)
-```
-
-\## Merged
-
-```{r}
-tA <- TeX(apa_print(tA.shapiro.full)$full_result)
-tA.350 <- TeX(apa_print(tA.shapiro.350)$full_result)
-tB <- TeX(apa_print(tB.shapiro)$full_result)
-ggplot() +
-  geom_density(data = betas.A.full, aes(x = beta), color = '#f99a93') +
-  geom_density(data = betas.A.350, aes(x = beta), color = '#a1c549') +
-  geom_density(data = betas.B, aes(x = (1.5 * beta)), color = '#ce8dff') +
-  stat_function(
-    fun = dnorm,
-    args = list(mean = 0, sd = sd(betas.A.full$beta))
-    ,
-    n = 150,
-    color = '#43d0d3'
-  ) +
-  theme_apa() +
-  ggtitle("Beta coefs. distribution", subtitle = "Plotted against an ideal gaussian cenetered at zero (blue)") +
-  labs(x = "", y = "") +
-  scale_x_continuous(labels = label_comma(),  limits = c(-0.0003, 0.0003)) +
-  theme(
-    axis.text.y = element_blank(),
-    axis.ticks.y = element_blank(),
-    legend.position = "none",
-    plot.title = element_text(size = 28, face = "bold"),
-    plot.subtitle = element_text(color = '#43d0d3')
-  ) +  #remove y axis ticks)
-  annotate("text",
-           x = -.00015,
-           y = 8000,
-           label = "All curves did not show evidence of non-normality") +
-  annotate("text",x = -.00024,y = 7200,label = tA,parse = TRUE,colour = '#f99a93') +
-  annotate("text",x = -.00024,y = 6400,label = tA.400,parse = TRUE,colour = '#a1c549') +
-  annotate("text",x = -.00024,y = 5600,label = tB,parse = TRUE,colour = '#ce8dff') 
-```
-
-
+# Fig 4. Possible incremental dynamics
 
 ```{r}
 
 # Create a mock data frame with similar trends to the ones in the image
-pdi <- seq(0, 4000, length.out=100)
-accuracy_blue <- ifelse(pdi <= 500, 80, 80)
-accuracy_green <- ifelse(pdi <= 500, 60, 60 + 0.01 * (pdi - 500))
-accuracy_red <- ifelse(pdi <= 500, 50, 50 + 0.02 * (pdi - 500))
+pdi <- seq(0, 4000, length.out = 100)
+accuracy_blue <- ifelse(pdi <= 500, .50 + pdi * (.30/500), .80)
+accuracy_green <- ifelse(pdi <= 500, .50 + pdi * (.20/500), .70 + (.10/3500) * (pdi - 500))
+accuracy_red <- .50 + pdi * (.30/4000)
 
 data <- data.frame(
   PDI = pdi,
@@ -252,19 +182,28 @@ data <- data.frame(
 
 # Create the plot
 ggplot(data) +
-  geom_line(aes(x = PDI, y = BlueLine), color = "blue") +
-  geom_line(aes(x = PDI, y = GreenLine), color = "green") +
-  geom_line(aes(x = PDI, y = RedLine), color = "red") +
-  labs(title="Possible dynamics of the incremental relationship between PDI and antisaccade accuracy",
-       subtitle="Each of these three lines could be inferred to demonstrate a pattern of increment over time\nand to represent the same strength of effect.",
-       x="PDI in [ms]",
-       y="Hypothetical average correctness") +
-  geom_vline(xintercept = 500, linetype="dashed", color = "black") +
-  annotate("text", x = 500, y = 55, label = "Black dashed vertical line represents the conventional value\nafter which the influence of the attentional blink disappears", 
-           size = 3, angle = 270, hjust = 0) +
+  geom_line(aes(x = PDI, y = BlueLine), color = "#0D94E5") +
+  geom_line(aes(x = PDI, y = GreenLine), color = "#5ECF4B") +
+  geom_line(aes(x = PDI, y = RedLine), color = "#DF5069") +
+  labs(
+    title = "Possible dynamics of the incremental relationship between PDI
+       and antisaccade accuracy",
+    subtitle = "Each of these three lines could be inferred to demonstrate a pattern of increment over time\nand to represent the same strength of effect.",
+    caption =  "Black dashed vertical line represents the conventional value
+    after which the influence of the attentional blink disappears",
+    x = "PDI in [ms]",
+    y = "Hypothetical average correctness"
+  ) +
+  geom_vline(xintercept = 500,
+             linetype = "dashed",
+             color = "black",
+             size = 1) +
   theme_apa() +
-  theme(plot.title = element_text(hjust = 0.5), 
-        plot.subtitle = element_text(hjust = 0.5),
-        plot.caption = element_text(hjust = 0))
+  scale_y_continuous(labels = scales::percent) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5)
+  )
 ```
 
+# Fig 5. 
