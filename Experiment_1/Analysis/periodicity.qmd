@@ -2,83 +2,124 @@
 title: "Periodicity"
 author: "Bartek Kroczek"
 format: html
-editor: visual
+editor: source
 ---
-
 ```{r}
-#| include: false
-#| label: load-packages
 library(tidyverse)
-library(readr)
-library(broom)
+library(ggplot2)
 library(papaja)
-library(scales)
-library(latex2exp)
-library(ts.extend)
+```
+
+
+```{r}
+#| label: load-data
+#| include: false
+
+data.names <-
+  list.files('../Data', full.names = T, pattern = '*.csv$')
+data.files <- read_csv(data.names)
 ```
 
 ```{r}
 #| include: false
-data.B.names <- c(
-  list.files(
-    '../../Data/Data_B/Cohort_1/',
-    full.names = T,
-    pattern = "*.csv$"
-  ),
-  list.files(
-    '../Data/Data_B/Cohort_2/',
-    full.names = T,
-    pattern = "*.csv$"
-  )
-)
-
-data.B <-
-  read_csv(data.B.names) |>
-  separate(PART_ID, c("Part_id", "Session"), sep = -2)
-```
-
-```{r}
-#| include: false
-data.B.aggr <-
-  data.B |>
+data.aggr <-
+  data.files |>
   filter(Trial_type == "experiment", Rt > 0.0) |> # Experiment and no timeout
-  select(Part_id, CSI, Corr) |>
-  mutate(t = CSI * 8.3) |>
-  group_by(Part_id, t) |>
-  summarise(mean_corr = mean(Corr)) 
+  select(PART_ID, CSI, Corr) |>
+  mutate(t = CSI * 16.6) |>
+  group_by(PART_ID, t) |>
+  summarise(mean_corr = 100.0 * mean(Corr)) 
 ```
 
 ```{r}
 #| echo: false
-data.B.aggr |> 
-  filter(Part_id == "157K25") |>
-  ggplot(mapping = aes(x=t, y=mean_corr)) +
+data.aggr |> 
+  filter(PART_ID == "140M21") |>
+  ggplot(mapping = aes(x=t, y=mean_corr/100.0)) +
   geom_point() +
   geom_line() + 
   geom_smooth(method='lm', formula = y ~ x) +
-  theme_apa() +
-  ggtitle("Single participant data", subtitle = "We've seen oscillations here in the past") + 
-  labs(x = "time in [ms]", y = "Avg correctness in [0.0 - 1.0] range")
+  ggtitle("Single participant data", 
+          subtitle = "Blue line represents linear regression fitted to data") + 
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "PDI in [ms]", y = "Average correctness") +
+  theme_apa()
 ```
+
 ```{r}
-#Generate mock data
-set.seed(1)
-m      <- 100
-SIGNAL <- 0.8*sin(0.3*(1:m))
-NOISE  <- rnorm(m)
-SERIES <- SIGNAL + NOISE
+unique_participants <- unique(data.aggr$PART_ID)
 
-#Conduct permutation-spectrum test
-TEST <- spectrum.test(SERIES, sims=10)
+# Initialize an empty tibble to store results
+ljung_box_results <-
+  tibble(
+    PART_ID = character(),
+    p_value = numeric(),
+    statistic = numeric(),
+    lag = integer(),
+    method = character()
+  )
 
+for (part_id in unique_participants) {
+  part_data <- filter(data.aggr, PART_ID == part_id) %>% arrange(t)
+  
+  
+  test_result <- Box.test(part_data$mean_corr, type = "Ljung-Box")
+  
+  # Append the results to the ljung_box_results tibble
+  ljung_box_results <- ljung_box_results %>%
+    add_row(
+      PART_ID = part_id,
+      p_value = test_result$p.value,
+      statistic = test_result$statistic,
+      lag = test_result$parameter,
+      method = test_result$method
+    )
+  
+}
+
+ljung_box_results <- ljung_box_results %>%
+  arrange(p_value) %>%
+  mutate(rank = row_number(),
+         adjusted_p_value = p.adjust(p_value, method = "BH"))
+
+
+# View the results
+print(ljung_box_results)
 ```
+Benjamini-Hochberg (BH) is more suitable for exploratory research where you are dealing with a large number of independent tests
+
 ```{r}
-v <-data.B.aggr |> 
-  filter(Part_id == "AC-K-26K26") |>
-  pull(mean_corr)
-# 
-TEST <- spectrum.test(v)
-plot(TEST)
-# print(c(x, TEST$p.value))
+# How many participants has significant values 
+ljung_box_results |> summarise(
+  Significant_Raw = sum(p_value < 0.05),
+  Significant_Adjusted = sum(adjusted_p_value < 0.05))
+```
+
+```{r}
+# Load necessary libraries
+library(wavelet)
+library(fields)
+
+# Assuming 'time_series' is your data frame containing the 't' and 'mean_corr' columns for a single participant
+# You might need to adjust this part to load your specific data
+time_series <- read.csv("/path/to/your/aggr_data.csv")  # Update the path to your actual data file
+
+# Select data for a specific participant, if necessary
+participant_data <- subset(time_series, PART_ID == "specific_participant_id")
+
+# Preparing the data
+t <- participant_data$t
+mean_corr <- participant_data$mean_corr
+
+# Perform Continuous Wavelet Transform (CWT)
+# Note: You may need to adjust parameters based on your data specifics
+wt <- cwt(mean_corr, dt=mean(diff(t)), dj=1/12, make.signal=FALSE)
+
+# Plot the wavelet power spectrum
+plot(wt, plot.cb=TRUE, plot.phase=FALSE)
+
+# Adding a title to the plot
+title(main="Wavelet Power Spectrum", line=2)
+
 ```
 
