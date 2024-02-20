@@ -8,6 +8,8 @@ editor: source
 library(tidyverse)
 library(ggplot2)
 library(papaja)
+library(reticulate)
+library(WaveletComp)
 ```
 
 
@@ -95,31 +97,39 @@ ljung_box_results |> summarise(
   Significant_Adjusted = sum(adjusted_p_value < 0.05))
 ```
 
+
 ```{r}
-# Load necessary libraries
-library(wavelet)
-library(fields)
 
-# Assuming 'time_series' is your data frame containing the 't' and 'mean_corr' columns for a single participant
-# You might need to adjust this part to load your specific data
-time_series <- read.csv("/path/to/your/aggr_data.csv")  # Update the path to your actual data file
+my.data <- data.aggr |> filter(PART_ID == "8M24") |> arrange(t)
 
-# Select data for a specific participant, if necessary
-participant_data <- subset(time_series, PART_ID == "specific_participant_id")
+my.data <- data.frame(x = my.data$mean_corr)
 
-# Preparing the data
-t <- participant_data$t
-mean_corr <- participant_data$mean_corr
-
-# Perform Continuous Wavelet Transform (CWT)
-# Note: You may need to adjust parameters based on your data specifics
-wt <- cwt(mean_corr, dt=mean(diff(t)), dj=1/12, make.signal=FALSE)
-
-# Plot the wavelet power spectrum
-plot(wt, plot.cb=TRUE, plot.phase=FALSE)
-
-# Adding a title to the plot
-title(main="Wavelet Power Spectrum", line=2)
+my.w <- analyze.wavelet(my.data, "x",
+loess.span = 0,
+dt = 1, dj = 1/60,
+lowerPeriod = 2,
+upperPeriod = 32,
+make.pval = TRUE, n.sim = 50)
 
 ```
+
+```{r}
+# Z JAKIEGOŚ DZIWNEGO POWODU P VALUE JEEST USTALONE NA P=0.1
+wt.image(my.w, color.key = "quantile", n.levels = 250,
+legend.params = list(lab = "wavelet power levels", mar = 4.7))
+```
+
+```{r}
+reconstruct(my.w, plot.waves = FALSE, lwd = c(1,2),
+legend.coords = "bottomleft")
+```
+
+```{r}
+my.w$Power.pval != 0 & my.w$Power.pval <0.05
+```
+
+```{r}
+my.w$Power.pval
+```
+
 

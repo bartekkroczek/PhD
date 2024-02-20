@@ -11,3 +11,11 @@ Encoding: UTF-8
 
 RnwWeave: knitr
 LaTeX: pdfLaTeX
+
+BuildType: Package
+PackageUseDevtools: Yes
+PackageInstallArgs: --no-multiarch --with-keep.source
+
+PythonType: conda
+PythonVersion: 3.11.5
+PythonPath: ~/.anaconda3/bin/python3.11
