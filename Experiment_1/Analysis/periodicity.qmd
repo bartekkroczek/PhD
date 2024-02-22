@@ -49,40 +49,41 @@ data.aggr |>
 ```
 
 ```{r}
-unique_participants <- unique(data.aggr$PART_ID)
+# Group by participant and nest data
+nested_data <- data.aggr %>%
+  arrange(PART_ID, t) %>%
+  group_by(PART_ID) %>%
+  nest()
 
-# Initialize an empty tibble to store results
-ljung_box_results <-
+# Define a function to detrend and perform the Ljung-Box test
+process_data <- function(df) {
+  # Polynomial Detrending
+  fit <- lm(mean_corr ~ poly(t, 2), data = df)
+  df$detrended_mean_corr <- residuals(fit)
+  
+  # Ljung-Box test on the detrended series
+  test_result <-
+    Box.test(df$detrended_mean_corr, type = "Ljung-Box")
+  
+  # Return a tibble with the results
   tibble(
-    PART_ID = character(),
-    p_value = numeric(),
-    statistic = numeric(),
-    lag = integer(),
-    method = character()
+    p_value = test_result$p.value,
+    statistic = test_result$statistic,
+    lag = test_result$parameter,
+    method = test_result$method
   )
-
-for (part_id in unique_participants) {
-  part_data <- filter(data.aggr, PART_ID == part_id) %>% arrange(t)
-  
-  
-  test_result <- Box.test(part_data$mean_corr, type = "Ljung-Box")
-  
-  # Append the results to the ljung_box_results tibble
-  ljung_box_results <- ljung_box_results %>%
-    add_row(
-      PART_ID = part_id,
-      p_value = test_result$p.value,
-      statistic = test_result$statistic,
-      lag = test_result$parameter,
-      method = test_result$method
-    )
-  
 }
 
+# Apply the function to each nested dataframe
+ljung_box_results <- nested_data %>%
+  mutate(results = map(data, process_data)) %>%
+  select(-data) %>%
+  unnest(results) %>%
+  ungroup()
+
+# Adjust p-values for multiple comparisons
 ljung_box_results <- ljung_box_results %>%
-  arrange(p_value) %>%
-  mutate(rank = row_number(),
-         adjusted_p_value = p.adjust(p_value, method = "BH"))
+  mutate(adjusted_p_value = p.adjust(p_value, method = "holm"))
 
 
 # View the results
@@ -92,44 +93,73 @@ Benjamini-Hochberg (BH) is more suitable for exploratory research where you are 
 
 ```{r}
 # How many participants has significant values 
-ljung_box_results |> summarise(
+ljung_box_results |> 
+  summarise(
   Significant_Raw = sum(p_value < 0.05),
   Significant_Adjusted = sum(adjusted_p_value < 0.05))
 ```
 
+## Wavelet Transform
 
 ```{r}
+random_part_id <- data.aggr$PART_ID |> unique() |> sample(1)
+random_part_id <- "97K21"
+print(random_part_id)
+my.data <- data.aggr |> filter(PART_ID == random_part_id) |> arrange(t)
+fit <- lm(mean_corr ~ poly(t, 2), data = my.data)
+my.data$mean_corr <- residuals(fit)
 
-my.data <- data.aggr |> filter(PART_ID == "8M24") |> arrange(t)
-
-my.data <- data.frame(x = my.data$mean_corr)
+my.data <- data.frame(time = my.data$t, x = my.data$mean_corr)
 
 my.w <- analyze.wavelet(my.data, "x",
 loess.span = 0,
 dt = 1, dj = 1/60,
-lowerPeriod = 2,
-upperPeriod = 32,
+lowerPeriod = 1,
+upperPeriod = 16,
 make.pval = TRUE, n.sim = 50)
 
 ```
 
 ```{r}
 # Z JAKIEGOŚ DZIWNEGO POWODU P VALUE JEEST USTALONE NA P=0.1
-wt.image(my.w, color.key = "quantile", n.levels = 250,
-legend.params = list(lab = "wavelet power levels", mar = 4.7))
+wt.image(
+  my.w,
+  color.key = "quantile",
+  n.levels = 250,
+  legend.params = list(lab = "wavelet power levels", mar = 4.7),
+  spec.time.axis = list(at = seq(0, 48, by = 12),
+                        labels = seq(0, 800, by = 200))
+)
 ```
 
 ```{r}
-reconstruct(my.w, plot.waves = FALSE, lwd = c(1,2),
-legend.coords = "bottomleft")
+reconstruct(
+  my.w,
+  plot.waves = FALSE,
+  lwd = c(1, 2),
+  legend.coords = "bottomleft"
+)
 ```
 
-```{r}
-my.w$Power.pval != 0 & my.w$Power.pval <0.05
-```
+## Peridogram
 
 ```{r}
-my.w$Power.pval
+
+# Plot the periodogram
+spectrum(my.data, main = "Periodogram of Time Series Data")
+
+# If you prefer a ggplot2 style plot, you can extract the spectral data and plot it manually
+spectral_data <- spectrum(my.data$x, plot = FALSE)
+spectral_df <-
+  as_tibble(list(frequency = spectral_data$freq, spectrum = spectral_data$spec))
+
+# Plot using ggplot2
+ggplot(spectral_df, aes(x = frequency, y = spectrum)) +
+  geom_line() +
+  theme_apa() +
+  labs(x = "Frequency", y = "Spectral Density", title = "Periodogram of Time Series Data")
+
 ```
+
 
 
