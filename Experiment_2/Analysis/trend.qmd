@@ -1,0 +1,331 @@
+---
+title: "Trend Analysis"
+author: "Bartek Kroczek"
+format: html
+editor: source
+---
+
+## Does varying cue-stimulus interval affect the sensory discrimination performance in the antisaccade task?
+
+```{r}
+#| include: false
+#| label: load-packages
+library(tidyverse)
+library(readr)
+library(broom)
+library(papaja)
+library(scales)
+library(latex2exp)
+library(scales)
+library(ggtext)
+library(latex2exp)
+library(tseries)
+library(BayesFactor)
+
+```
+
+# Data loading 
+
+```{r}
+#| label: load-data
+#| include: false
+
+data.names <-
+  list.files('../Data', full.names = T, pattern = '*.csv$')
+data.files <- read_csv(data.names)
+```
+
+```{r}
+#| include: false
+data.aggr <-
+  data.files |>
+  filter(Trial_type == "experiment", Rt > 0.0) |> # Experiment and no timeout
+  select(PART_ID, PDI, Corr) |>
+  mutate(t = PDI * 16.6) |>
+  group_by(PART_ID, t) |>
+  summarise(mean_corr = 100.0 * mean(Corr)) 
+```
+
+# Fig 2. Single participant Data
+```{r}
+unique(data.aggr$PART_ID)
+```
+
+```{r}
+#| echo: false
+data.aggr |> 
+  filter(PART_ID == "X015M27") |>
+  ggplot(mapping = aes(x=t, y=mean_corr/100.0)) +
+  geom_point() +
+  geom_line() + 
+  geom_smooth(method='lm', formula = y ~ x) +
+  theme_apa() +
+  ggtitle("Single participant data", 
+          subtitle = "Blue line represents linear regression fitted to data") + 
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "PDI in [ms]", y = "Average correctness")
+```
+
+# Fig 3. Beta coeff distribution
+
+```{r}
+
+beta_coeffs <- data.aggr |>
+  do(model = lm(mean_corr ~ t, data = .)) |>
+  mutate(beta  = model$coefficients[[2]])
+
+
+# Performing Shapiro-Wilk test
+shapiro_test <- shapiro.test(beta_coeffs$beta)
+
+# Performing Jarque-Bera test
+jarque_bera_test <- jarque.bera.test(beta_coeffs$beta)
+
+# Creating LaTeX strings for the test results
+shapiro_latex <-
+  TeX(paste(
+    "Shapiro-Wilk: $W = ",
+    round(shapiro_test$statistic, 2),
+    ", p = ",
+    signif(shapiro_test$p.value, digits = 3),
+    "$"
+  ), output = "character")
+
+
+
+jarque_bera_latex <-
+  TeX(
+    paste(
+      "Jarque-Bera: $\\chi^2(",
+      jarque_bera_test$parameter,
+      ") = ",
+      round(jarque_bera_test$statistic, 2),
+      ", p = ",
+      signif(jarque_bera_test$p.value, digits = 3),
+      "$"
+    )
+  )
+
+
+
+ggplot() +
+  geom_density(data = beta_coeffs, aes(x = beta), color = "#DF5069") +
+  stat_function(
+    fun = dnorm,
+    n = 1000,
+    args = list(mean = 0, sd = sd(beta_coeffs$beta)),
+    color = "#0D94E5"
+  ) +
+  theme_apa() +
+  labs(
+    title = "<span style='color:#DF5069;'>Beta coeff.</span> plotted over a
+          <span style='color:#0D94E5;'> normal distribution with mean = 0 </span>",
+    subtitle = "<span style='color:#DF5069;'>Beta coeff.</span>
+       is **normally distributed** with expected value at 2 pp.",
+    x = "Beta coeffs. in pp. over 1 second inc. of PDI",
+    y = "",
+    caption = "The variance of both curves were equated"
+  ) +
+  theme(
+    plot.title = element_markdown(lineheight = 1.1),
+    plot.subtitle = element_markdown(lineheight = 1.1),
+    legend.position = "none"
+  ) +
+  geom_vline(xintercept = mean(beta_coeffs$beta),
+             linetype = "dashed") +
+  scale_x_continuous(
+    labels = percent_format(scale = 1000, suffix = " pp."),
+    breaks = c(-.01, 0, .002, .01),
+    limits = c(-.012, .012)
+  ) +
+  ylim(c(0, 140)) +
+  annotate(
+    "text",
+    x = -0.0036,
+    y = 100,
+    label = shapiro_latex,
+    parse = TRUE,
+    hjust = 1.1,
+    vjust = 1.1,
+    size = 3.5
+  ) +
+  annotate(
+    "text",
+    x = -0.0032,
+    y = 130,
+    label = jarque_bera_latex,
+    parse = TRUE,
+    hjust = 1.1,
+    vjust = 2,
+    size = 3.5
+  ) +
+  theme(axis.text.y = element_blank(),  #remove y axis labels
+        axis.ticks.y = element_blank())  #remove y axis ticks)
+
+```
+
+
+# Fig 4. Possible incremental dynamics
+
+```{r}
+
+# Create a mock data frame with similar trends to the ones in the image
+pdi <- seq(0, 4000, length.out = 100)
+accuracy_blue <- ifelse(pdi <= 500, .50 + pdi * (.30/500), .80)
+accuracy_green <- ifelse(pdi <= 500, .50 + pdi * (.20/500), .70 + (.10/3500) * (pdi - 500))
+accuracy_red <- .50 + pdi * (.30/4000)
+
+data <- data.frame(
+  PDI = pdi,
+  BlueLine = accuracy_blue,
+  GreenLine = accuracy_green,
+  RedLine = accuracy_red
+)
+
+# Create the plot
+ggplot(data) +
+  geom_line(aes(x = PDI, y = BlueLine), color = "#0D94E5") +
+  geom_line(aes(x = PDI, y = GreenLine), color = "#5ECF4B") +
+  geom_line(aes(x = PDI, y = RedLine), color = "#DF5069") +
+  labs(
+    title = "Possible dynamics of the incremental relationship between PDI
+       and antisaccade accuracy",
+    subtitle = "Each of these three lines could be inferred to demonstrate a pattern of increment over time\nand to represent the same strength of effect.",
+    caption =  "Black dashed vertical line represents the conventional value
+    after which the influence of the attentional blink disappears",
+    x = "PDI in [ms]",
+    y = "Hypothetical average correctness"
+  ) +
+  geom_vline(xintercept = 500,
+             linetype = "dashed",
+             color = "black",
+             size = 1) +
+  theme_apa() +
+  scale_y_continuous(labels = scales::percent) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5)
+  )
+```
+
+# Fig 5. Beta for two ranges of PDI values
+
+```{r}
+beta_coeffs_full <- data.aggr |>
+  do(model = lm(mean_corr ~ t, data = .)) |>
+  mutate(beta  = model$coefficients[[2]])
+
+beta_coeffs_no_blink <- data.aggr |>
+  filter(t > 600) |>
+  do(model = lm(mean_corr ~ t, data = .)) |>
+  mutate(beta  = model$coefficients[[2]])
+
+# Performing Shapiro-Wilk test
+shapiro_test_full <- shapiro.test(beta_coeffs$beta)
+shapiro_test_no_blink <- shapiro.test(beta_coeffs_no_blink$beta)
+t_test <-
+  t.test(beta_coeffs$beta * 10, beta_coeffs_no_blink$beta * 10)
+
+
+# Creating LaTeX strings for the test results
+shapiro_full_latex <-
+  TeX(paste(
+    "Shapiro-Wilk: $W = ",
+    round(shapiro_test_full$statistic, 2),
+    ", p = ",
+    signif(shapiro_test_full$p.value, digits = 3),
+    "$"
+  ), output = "character")
+
+
+shapiro_no_blink_latex <-
+  TeX(paste(
+    "Shapiro-Wilk: $W = ",
+    round(shapiro_test_no_blink$statistic, 2),
+    ", p = ",
+    signif(shapiro_test_no_blink$p.value, digits = 3),
+    "$"
+  ), output = "character")
+
+
+
+
+ggplot() +
+  geom_density(data = beta_coeffs_full, aes(x = beta), color = "#DF5069") +
+  geom_density(data = beta_coeffs_no_blink, aes(x = beta), color = "#0D94E5") +
+  theme_apa() +
+  labs(
+    title = "Beta coeff. distribution
+    <span style='color:#DF5069;'>possibly contaminated</span>
+    and
+    <span style='color:#0D94E5;'>free from</span>
+    an attentional blink",
+    x = "Beta coeffs. in pp. over 1 second inc. of PDI",
+    y = ""
+  ) +
+  theme(
+    plot.title = element_markdown(lineheight = 1.1),
+    plot.subtitle = element_markdown(lineheight = 1.1),
+    legend.position = "none"
+  ) +
+  geom_vline(
+    xintercept = mean(beta_coeffs_full$beta),
+    linetype = "dashed",
+    color = "#DF5069"
+  ) +
+  geom_vline(
+    xintercept = mean(beta_coeffs_no_blink$beta),
+    linetype = "dashed",
+    color = "#0D94E5"
+  ) +
+  scale_x_continuous(
+    labels = percent_format(scale = 1000, suffix = " pp."),
+    breaks = c(-.01, 0, .002, .01),
+    limits = c(-.012, .012)
+  ) +
+  ylim(c(0, 138)) +
+  annotate(
+    "text",
+    x = -0.0033,
+    y = 130,
+    label = shapiro_full_latex,
+    parse = TRUE,
+    hjust = 1.1,
+    vjust = 1.1,
+    size = 3.5,
+    color = "#DF5069"
+  ) +
+  annotate(
+    "text",
+    x = -0.0036,
+    y = 120,
+    label = shapiro_no_blink_latex,
+    parse = TRUE,
+    hjust = 1.1,
+    vjust = 2,
+    size = 3.5,
+    color = "#0D94E5"
+  ) +
+  theme(axis.text.y = element_blank(),  #remove y axis labels
+        axis.ticks.y = element_blank())  #remove y axis ticks)
+
+```
+```{r}
+apa_print(shapiro_test_full)$full
+```
+
+```{r}
+
+t.test(beta_coeffs_no_blink$beta, mu = 0)
+
+```
+
+
+```{r}
+# bf_result <- ttestBF(x = beta_coeffs_no_blink$beta, nullInterval = c(-0.00001, 0.00001))
+bf_result <- ttestBF(x = beta_coeffs_no_blink$beta, mu=0)
+# Print the results
+print(bf_result)
+```
+
+

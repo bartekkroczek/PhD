@@ -8,8 +8,8 @@ editor: source
 library(tidyverse)
 library(ggplot2)
 library(papaja)
-library(reticulate)
 library(WaveletComp)
+library(patchwork)
 ```
 
 
@@ -48,6 +48,8 @@ data.aggr |>
   theme_apa()
 ```
 
+## Ljubng box formal testng
+
 ```{r}
 # Group by participant and nest data
 nested_data <- data.aggr %>%
@@ -58,7 +60,7 @@ nested_data <- data.aggr %>%
 # Define a function to detrend and perform the Ljung-Box test
 process_data <- function(df) {
   # Polynomial Detrending
-  fit <- lm(mean_corr ~ poly(t, 2), data = df)
+  fit <- lm(mean_corr ~ poly(t, 1), data = df)
   df$detrended_mean_corr <- residuals(fit)
   
   # Ljung-Box test on the detrended series
@@ -83,7 +85,7 @@ ljung_box_results <- nested_data %>%
 
 # Adjust p-values for multiple comparisons
 ljung_box_results <- ljung_box_results %>%
-  mutate(adjusted_p_value = p.adjust(p_value, method = "holm"))
+  mutate(adjusted_p_value = p.adjust(p_value, method = "BH"))
 
 
 # View the results
@@ -102,9 +104,24 @@ ljung_box_results |>
 ## Wavelet Transform
 
 ```{r}
+# Wybieramy osobę badaną do wizualizacji
 random_part_id <- data.aggr$PART_ID |> unique() |> sample(1)
-random_part_id <- "97K21"
+# random_part_id <- "97K21" # całkiem dużo widać
+# random_part_id <- "59K22" # też sporo, acz nieco gorzej
+# random_part_id <- "106M23" # trzy wyraźne wyspy 
+# random_part_id <- "146M21" # marnizna raczej
+# random_part_id <- "40K24" # globalna wolna fala powyżej 200ms i jeden peak
+# random_part_id <- "37K24" # jeden peak, reszta płaska
+# random_part_id <- "36K20" # dwa peaki, reszta płaska
+# random_part_id <- "91M22" # trzy spore peaki, troche płaska reszta
+# random_part_id <- "118K23" # idealna wolna fala na całości 
+# random_part_id <- "96K22" # płasciutko i zawirowanie na końcu 
+# random_part_id <- "75K22" # wolna faza na całości, trochę szumu na początku
 print(random_part_id)
+```
+```{r}
+
+# detrending poprzez odjęcie wielomianu stopnia 2
 my.data <- data.aggr |> filter(PART_ID == random_part_id) |> arrange(t)
 fit <- lm(mean_corr ~ poly(t, 2), data = my.data)
 my.data$mean_corr <- residuals(fit)
@@ -116,19 +133,26 @@ loess.span = 0,
 dt = 1, dj = 1/60,
 lowerPeriod = 1,
 upperPeriod = 16,
-make.pval = TRUE, n.sim = 50)
+make.pval = TRUE, n.sim = 200)
 
 ```
 
 ```{r}
 # Z JAKIEGOŚ DZIWNEGO POWODU P VALUE JEEST USTALONE NA P=0.1
 wt.image(
+  siglvl = 0.05, 
+  plot.ridge = FALSE,
+  plot.legend = FALSE,
   my.w,
   color.key = "quantile",
   n.levels = 250,
-  legend.params = list(lab = "wavelet power levels", mar = 4.7),
+  # legend.params = list(lab = "wavelet power levels", mar = 4.7),
+  timelab = "PDI in [ms]",
+  periodlab = " Period in [data points per cycle]",
   spec.time.axis = list(at = seq(0, 48, by = 12),
-                        labels = seq(0, 800, by = 200))
+                        labels = seq(200, 1000, by = 200)),
+  # spec.period.axis = list(at = c(1, 2, 4, 8, 16), labels = c(16, 8, 4, 2, 1))
+
 )
 ```
 
@@ -137,9 +161,14 @@ reconstruct(
   my.w,
   plot.waves = FALSE,
   lwd = c(1, 2),
-  legend.coords = "bottomleft"
+  legend.coords = "bottomleft",
+  only.sig = TRUE,
+  spec.time.axis = list(at = seq(0, 48, by = 12),
+                        labels = seq(200, 1000, by = 200)),
+    timelab = "PDI in [ms]"
 )
 ```
+
 
 ## Peridogram
 
