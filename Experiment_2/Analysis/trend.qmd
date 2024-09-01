@@ -31,7 +31,7 @@ library(BayesFactor)
 #| include: false
 
 data.names <-
-  list.files('../Data', full.names = T, pattern = '*.csv$')
+  list.files('../Data_Full/', full.names = T, pattern = '*.csv$')
 data.files <- read_csv(data.names)
 ```
 
@@ -189,7 +189,7 @@ ggplot(data) +
   geom_line(aes(x = PDI, y = RedLine), color = "#DF5069") +
   labs(
     title = "Possible dynamics of the incremental relationship between PDI
-       and antisaccade accuracy",
+       and antisaccade accuracy",od zera do dj
     subtitle = "Each of these three lines could be inferred to demonstrate a pattern of increment over time\nand to represent the same strength of effect.",
     caption =  "Black dashed vertical line represents the conventional value
     after which the influence of the attentional blink disappears",

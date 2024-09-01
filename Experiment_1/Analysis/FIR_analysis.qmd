@@ -1,0 +1,225 @@
+---
+title: "FIR Analysis"
+author: "Bartek Kroczek"
+format: html
+editor: source
+---
+
+```{r}
+# Load required libraries
+library(signal)
+library(ggplot2)
+
+# Function to create FIR filter coefficients
+create_fir_filter <- function(coefficients = NULL, order = NULL, cutoff = NULL, type = "low") {
+  if (!is.null(coefficients)) {
+    return(coefficients)
+  } else if (!is.null(order) && !is.null(cutoff)) {
+    fir <- fir1(order, cutoff, type = type)
+    return(fir)
+  } else {
+    stop("Either provide coefficients or both order and cutoff")
+  }
+}
+
+# Function to apply the filter to a signal
+apply_filter <- function(signal, filter) {
+  filtered_signal <- signal::filter(filter, signal)
+  return(filtered_signal)
+}
+
+# Function to plot time domain representation
+plot_time_domain <- function(original, filtered) {
+  df <- data.frame(
+    time = seq_along(original),
+    original = original,
+    filtered = filtered
+  )
+  
+  ggplot(df, aes(x = time)) +
+    geom_line(aes(y = original, color = "Original")) +
+    geom_line(aes(y = filtered, color = "Filtered")) +
+    labs(title = "Time Domain Representation", x = "Sample", y = "Amplitude") +
+    scale_color_manual(values = c("Original" = "blue", "Filtered" = "red")) +
+    theme_minimal()
+}
+
+# Function to plot frequency response
+plot_frequency_response <- function(filter) {
+  freqz_result <- freqz(filter)
+  df <- data.frame(
+    frequency = freqz_result$f / pi,
+    magnitude = abs(freqz_result$h),
+    phase = Arg(freqz_result$h)
+  )
+  
+  p1 <- ggplot(df, aes(x = frequency, y = magnitude)) +
+    geom_line() +
+    labs(title = "Magnitude Response", x = "Normalized Frequency", y = "Magnitude") +
+    theme_minimal()
+  
+  p2 <- ggplot(df, aes(x = frequency, y = phase)) +
+    geom_line() +
+    labs(title = "Phase Response", x = "Normalized Frequency", y = "Phase (radians)") +
+    theme_minimal()
+  
+  gridExtra::grid.arrange(p1, p2, ncol = 1)
+}
+
+# Main function to diagnose FIR filter
+diagnose_fir_filter <- function(coefficients = NULL, order = NULL, cutoff = NULL, type = "low") {
+  # Create filter
+  fir_filter <- create_fir_filter(coefficients, order, cutoff, type)
+  
+  # Generate a test signal (e.g., a combination of sine waves)
+  t <- seq(0, 1, length.out = 1000)
+  signal <- sin(2 * pi * 10 * t) + 0.5 * sin(2 * pi * 50 * t)
+  
+  # Apply filter
+  filtered_signal <- apply_filter(signal, fir_filter)
+  
+  # Plot time domain representation
+  time_plot <- plot_time_domain(signal, filtered_signal)
+  print(time_plot)
+  
+  # Plot frequency response
+  plot_frequency_response(fir_filter)
+  
+  # Return filter coefficients
+  return(fir_filter)
+}
+
+# Example usage with manual coefficients
+manual_coeffs <- c(0.0625, 0.25, 0.375, 0.25, 0.0625)  # Example 5-tap moving average filter
+filter_coeffs <- diagnose_fir_filter(coefficients = manual_coeffs)
+print(filter_coeffs)
+
+# Example usage with automatic coefficient generation
+# filter_coeffs <- diagnose_fir_filter(order = 30, cutoff = 0.2, type = "low")
+# print(filter_coeffs)
+```
+
+
+
+
+```{r}
+# Load necessary libraries
+library(signal)
+library(ggplot2)
+library(gridExtra)
+
+# Function to generate a test signal
+generate_test_signal <- function(n, freq, sample_rate) {
+  t <- seq(0, (n-1)/sample_rate, 1/sample_rate)
+  signal <- sin(2 * pi * freq * t)
+  return(signal)
+}
+
+# Function to calculate PSD
+calculate_psd <- function(x, sample_rate) {
+  psd <- spec.pgram(x, plot = FALSE)
+  df_psd <- data.frame(
+    Frequency = psd$freq * sample_rate,
+    Power = psd$spec
+  )
+  return(df_psd)
+}
+
+# Function to analyze FIR filter distortion
+analyze_fir_distortion <- function(signal, filter_coeff, sample_rate) {
+  # Apply the FIR filter
+  filtered_signal <- filter(filter_coeff, 1, signal)
+  
+  # Ensure both signals have the same length
+  min_length <- min(length(signal), length(filtered_signal))
+  signal <- signal[1:min_length]
+  filtered_signal <- filtered_signal[1:min_length]
+  
+  # Compute FFT for original and filtered signals
+  fft_original <- abs(fft(signal))
+  fft_filtered <- abs(fft(filtered_signal))
+  
+  # Frequency axis for plotting
+  freq <- seq(0, sample_rate/2, length.out = floor(min_length/2) + 1)
+  
+  # Prepare data for plotting
+  df_time <- data.frame(
+    Time = seq(0, min_length - 1) / sample_rate,
+    Original = signal,
+    Filtered = filtered_signal
+  )
+  
+  df_freq <- data.frame(
+    Frequency = freq,
+    Original = fft_original[1:length(freq)],
+    Filtered = fft_filtered[1:length(freq)]
+  )
+  
+  # Calculate PSD
+  psd_original <- calculate_psd(signal, sample_rate)
+  psd_filtered <- calculate_psd(filtered_signal, sample_rate)
+  
+  # Time domain plot
+  p1 <- ggplot(df_time, aes(x = Time)) +
+    geom_line(aes(y = Original, color = "Original")) +
+    geom_line(aes(y = Filtered, color = "Filtered")) +
+    labs(title = "Time Domain Comparison", x = "Time (s)", y = "Amplitude") +
+    theme_minimal()
+  
+  # Frequency domain plot
+  p2 <- ggplot(df_freq, aes(x = Frequency)) +
+    geom_line(aes(y = Original, color = "Original")) +
+    geom_line(aes(y = Filtered, color = "Filtered")) +
+    labs(title = "Frequency Domain Comparison", x = "Frequency (Hz)", y = "Magnitude") +
+    theme_minimal() +
+    scale_x_log10()
+  
+  # PSD plot
+  p3 <- ggplot() +
+    geom_line(data = psd_original, aes(x = Frequency, y = Power, color = "Original")) +
+    geom_line(data = psd_filtered, aes(x = Frequency, y = Power, color = "Filtered")) +
+    labs(title = "Power Spectral Density Comparison", x = "Frequency (Hz)", y = "Power/Frequency") +
+    theme_minimal() +
+    scale_x_log10() +
+    scale_y_log10()
+  
+  # Combine plots
+  grid.arrange(p1, p2, p3, ncol = 1)
+  
+  # Return data for further analysis
+  return(list(time = df_time, freq = df_freq, psd_original = psd_original, psd_filtered = psd_filtered))
+}
+
+# Example usage
+sample_rate <- 1000  # Hz
+signal_freq <- 10    # Hz
+signal_length <- 1000  # samples
+
+# Generate test signal
+test_signal <- generate_test_signal(signal_length, signal_freq, sample_rate)
+
+# Define FIR filter coefficients (example low-pass filter)
+cutoff_freq <- 15  # Hz
+filter_order <- 100
+fir_coeff <- fir1(filter_order, cutoff_freq / (sample_rate/2), type = "low")
+
+# Analyze distortion
+results <- analyze_fir_distortion(test_signal, fir_coeff, sample_rate)
+
+# Plot filter frequency response
+filter_response <- freqz(fir_coeff)
+df_filter <- data.frame(
+  Frequency = filter_response$f / pi * (sample_rate/2),
+  Magnitude = abs(filter_response$h)
+)
+
+p4 <- ggplot(df_filter, aes(x = Frequency, y = Magnitude)) +
+  geom_line() +
+  labs(title = "FIR Filter Frequency Response", x = "Frequency (Hz)", y = "Magnitude") +
+  theme_minimal()
+
+print(p4)
+```
+
+
+

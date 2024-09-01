@@ -52,15 +52,15 @@ data.aggr |>
 
 ```{r}
 # Group by participant and nest data
-nested_data <- data.aggr %>%
-  arrange(PART_ID, t) %>%
-  group_by(PART_ID) %>%
+nested_data <- data.aggr |>
+  arrange(PART_ID, t) |>
+  group_by(PART_ID) |>
   nest()
 
 # Define a function to detrend and perform the Ljung-Box test
 process_data <- function(df) {
   # Polynomial Detrending
-  fit <- lm(mean_corr ~ poly(t, 1), data = df)
+  fit <- lm(mean_corr ~ stats::poly(t, 1), data = df)
   df$detrended_mean_corr <- residuals(fit)
   
   # Ljung-Box test on the detrended series
@@ -94,6 +94,23 @@ print(ljung_box_results)
 Benjamini-Hochberg (BH) is more suitable for exploratory research where you are dealing with a large number of independent tests
 
 ```{r}
+ljung_box_results |>
+  ggplot(mapping = aes(x = adjusted_p_value)) +
+  geom_density(alpha=0.2,  fill='#0D94E5', color="#0D94E5") +
+  geom_vline(xintercept = 0.05, lty=2, color="#DF5069") + 
+  theme_apa() + 
+  scale_x_continuous(breaks= c(0.05, 0.25, 0.50, 0.75, 1.00)) +
+  theme(axis.ticks.y = element_blank(),
+        axis.text.y = element_blank()) +
+  labs(
+    title = "Distribution of BH corrected p-values of Ljung Box test across participants",
+    caption = "Red horizontal dashed line represents significance threshold"
+  ) +
+  xlab("P Value") + 
+  ylab("Density")
+```
+
+```{r}
 # How many participants has significant values 
 ljung_box_results |> 
   summarise(
@@ -123,7 +140,7 @@ print(random_part_id)
 
 # detrending poprzez odjęcie wielomianu stopnia 2
 my.data <- data.aggr |> filter(PART_ID == random_part_id) |> arrange(t)
-fit <- lm(mean_corr ~ poly(t, 2), data = my.data)
+fit <- lm(mean_corr ~ stats::poly(t, 1), data = my.data)
 my.data$mean_corr <- residuals(fit)
 
 my.data <- data.frame(time = my.data$t, x = my.data$mean_corr)
@@ -189,6 +206,5 @@ ggplot(spectral_df, aes(x = frequency, y = spectrum)) +
   labs(x = "Frequency", y = "Spectral Density", title = "Periodogram of Time Series Data")
 
 ```
-
 
 

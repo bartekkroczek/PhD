@@ -1,0 +1,620 @@
+---
+title: "Fake trend"
+format: html
+editor: source
+---
+
+# Fake oscillations induction
+
+
+Preprocessing jest opcjonalny i ma dwa etapy, pierwszy to usuwanie wysokiej częstotliowści
+(denoising) a drugi to usuwanie częstotliwośći zbyt niskiej (detrending)
+
+Moving avg - denoising/smoothing
+odjęcie moving avg - detrending
+Fir - różnie, zależnie jakie parametry
+sec orded poly - detrending, a good one 
+
+
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(papaja)
+library(patchwork)
+library(ggtext)
+library(dplyr)
+library(gridExtra)
+library(grid)
+
+set.seed(123) 
+```
+
+```{r}
+#| label: load-data
+#| include: false
+
+data.names <- list.files('../Data', full.names = T, pattern = '*.csv$')
+data.files <- read_csv(data.names)
+```
+
+```{r}
+#| include: false
+data.aggr <-
+  data.files |>
+  filter(Trial_type == "experiment", Rt > 0.0) |> # Experiment and no timeout
+  select(PART_ID, CSI, Corr) |>
+  mutate(t = CSI * 16.6) |>
+  group_by(PART_ID, t) |>
+  summarise(mean_corr = 100.0 * mean(Corr)) 
+```
+
+```{r}
+#| echo: false
+data.aggr |> 
+  filter(PART_ID == "140M21") |>
+  ggplot(mapping = aes(x=t, y=mean_corr/100.0)) +
+  geom_point() +
+  geom_line() + 
+  geom_smooth(method='lm', formula = y ~ x) +
+  ggtitle("Single participant data", 
+          subtitle = "Blue line represents linear regression fitted to data") + 
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "PDI in [ms]", y = "Average correctness") +
+  theme_apa()
+```
+
+```{r}
+roll_mean <- (function(x, n = 3)
+  stats::filter(x, rep(1 / n, n), sides = 2))
+
+# Group by participant and nest data
+nested_data <- data.aggr |>
+  arrange(PART_ID, t) |>
+  group_by(PART_ID)
+
+# Define a function to detrend and perform the Ljung-Box test
+roll_process_data <- function(mean_corr, t) {
+  roll_mean_values <- na.omit(roll_mean(mean_corr))
+  fit <- lm(roll_mean_values ~  poly(t[1:length(roll_mean_values)], 1))
+  roll_detrended <- residuals(fit)
+  
+  fit <- lm(mean_corr ~ poly(t, 1))
+  good_detrended <- residuals(fit)
+  
+  # Ljung-Box test on the detrended series
+  roll_test_result <- Box.test(roll_detrended, type = "Ljung-Box")
+  good_test_result <- Box.test(good_detrended, type = "Ljung-Box")
+  
+  # Return a tibble with the results
+  tibble(
+    roll_p_value = roll_test_result$p.value,
+    roll_statistic = roll_test_result$statistic,
+    roll_lag = roll_test_result$parameter,
+    roll_method = roll_test_result$method,
+    good_p_value = good_test_result$p.value,
+    good_statistic = good_test_result$statistic,
+    good_lag = good_test_result$parameter,
+    good_method = good_test_result$method
+  )
+}
+
+# Apply the function to each nested dataframe
+ljung_box_results <- nested_data |>
+  mutate(roll_results = roll_process_data(mean_corr, t)) |>
+  ungroup() |>
+  unnest() |>
+  group_by(PART_ID) |>
+  slice_head(n = 1)
+
+
+# Adjust p-values for multiple comparisons
+ljung_box_results <- ljung_box_results |>
+  mutate(roll_adjusted_p_value = p.adjust(roll_p_value, method = "BH"),
+         good_adjusted_p_value = p.adjust(good_p_value, method = "BH"))
+
+
+# View the results
+print(ljung_box_results)
+```
+```{r}
+# Group by participant and nest data
+nested_data <- data.aggr |>
+  arrange(PART_ID, t) |>
+  group_by(PART_ID) |>
+  nest()
+
+# Define a function to detrend and perform the Ljung-Box test
+process_data <- function(df) {
+  df$roll_mean_values <- roll_mean(df$mean_corr)
+  clean_data <- df[complete.cases(df), ]
+  fit <- lm(roll_mean_values ~  poly(t, 1), data = clean_data)
+  clean_data$roll_detrended <- residuals(fit)
+  
+  # Polynomial Detrending
+  fit <- lm(mean_corr ~ poly(t, 1), data = df)
+  df$detrended_mean_corr <- residuals(fit)
+  
+  # Ljung-Box test on the detrended series
+  good_test_result <- Box.test(df$detrended_mean_corr, type = "Ljung-Box")
+  roll_test_result <- Box.test(clean_data$roll_detrended, type = "Ljung-Box")
+  
+  # Return a tibble with the results
+  tibble(
+    good_p_value = good_test_result$p.value,
+    good_statistic = good_test_result$statistic,
+    good_lag = good_test_result$parameter,
+    good_method = good_test_result$method,
+    roll_p_value = roll_test_result$p.value,
+    roll_statistic = roll_test_result$statistic,
+    roll_lag = roll_test_result$parameter,
+    roll_method = roll_test_result$method
+  )
+}
+
+# Apply the function to each nested dataframe
+ljung_box_results <- nested_data %>%
+  mutate(results = map(data, process_data)) %>%
+  select(-data) %>%
+  unnest(results) %>%
+  ungroup()
+
+# Adjust p-values for multiple comparisons
+ljung_box_results <- ljung_box_results %>%
+  mutate(good_adjusted_p_value = p.adjust(good_p_value, method = "BH"),
+         roll_adjusted_p_value = p.adjust(roll_p_value, method = "BH"))
+
+
+# View the results
+print(ljung_box_results)
+```
+
+```{r}
+good_p_val_dist <- ljung_box_results |>
+  ggplot(mapping = aes(x = good_adjusted_p_value)) +
+  geom_density(alpha=0.2,  fill='#0D94E5', color="#0D94E5") +
+  geom_vline(xintercept = 0.05, lty=2, color="#DF5069") + 
+  theme_apa() + 
+  scale_x_continuous(breaks= c(0.05, 0.25, 0.50, 0.75, 1.00)) +
+  theme(axis.ticks.y = element_blank(),
+        axis.text.y = element_blank()) +
+  xlab("p-value") + 
+  ylab("Density")
+```
+
+```{r}
+roll_p_val_dist <- ljung_box_results |>
+  ggplot(mapping = aes(x = roll_adjusted_p_value)) +
+  geom_density(alpha=0.2,  fill='#006400', color="#006400") +
+  geom_vline(xintercept = 0.05, lty=2, color="#DF5069") + 
+  theme_apa() + 
+  scale_x_continuous(breaks= c(0.001, 0.01, 0.05), limits = c(0, 0.051)) +
+  theme(axis.ticks.y = element_blank(),
+        axis.text.y = element_blank()) +
+  xlab("p-value")  +
+  ylab("")
+```
+```{r}
+combined_plot <- good_p_val_dist + 
+  roll_p_val_dist +
+  plot_annotation(
+    title = "Distribution of BH corrected p-values of Jlung Box test across participants",
+    subtitle = "Both <span style='color:#0D94E5;'>without</span> and <span style='color:#006400;'>with</span> moving average applied during preprocessing",
+    caption = "Red horizontal dashed line represents significance threshold",
+    tag_levels = "A"
+  ) &
+  theme(
+    plot.title = element_textbox_simple(size = 12),
+    plot.subtitle = element_textbox_simple(size = 10, lineheight = 1.2, family = "sans"),
+    plot.caption = element_text(size = 10)
+  )
+
+plot(combined_plot)
+ggsave("p_val_dist.png", combined_plot, dpi = 600)
+```
+
+```{r}
+# How many participants has significant values 
+ljung_box_results |> 
+  ungroup() |>
+  summarise(
+  Significant_Raw = sum(p_value < 0.05),
+  Significant_Adjusted = sum(adjusted_p_value < 0.05))
+```
+
+
+```{r}
+#| echo: false
+data.aggr |> 
+  filter(PART_ID == "140M21") |>
+  ggplot(mapping = aes(x=t, y=roll_mean(mean_corr/100.0))) +
+  geom_point() +
+  geom_line() + 
+  geom_smooth(method='lm', formula = y ~ x) +
+  ggtitle("Single participant data", 
+          subtitle = "Blue line represents linear regression fitted to data") + 
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "PDI in [ms]", y = "Average correctness") +
+  theme_apa()
+```
+
+
+The signal was zero-padded (50 points before and after the RT temporal profile), multiplexed by a Hanning window, and then filtered (two-pass least-squares FIR filtering, 10th order, EEGLAB toolbox) within cutoff frequency bands 0–2 Hz, in each subject separately.
+```{r}
+rt_profile <- data.aggr |> 
+  filter(PART_ID == "140M21")
+rt_profile$mean_corr
+```
+
+```{r}
+# Load necessary libraries
+library(signal)
+library(eegkit)
+library(ggplot2)
+library(reshape2)
+library(gridExtra)
+
+# Example data
+set.seed(123)
+rt_profile <- dplyr::filter(data.aggr, PART_ID == "140M21")$mean_corr
+
+# Zero-padding function
+zero_pad <- function(signal, pad_len) {
+  return(c(rep(0, pad_len), signal, rep(0, pad_len)))
+}
+
+# Apply zero-padding (50 points before and after)
+padded_signal <- zero_pad(rt_profile, 50)
+
+# Apply Hanning window
+hanning_window <- hanning(length(padded_signal))
+windowed_signal <- padded_signal * hanning_window
+
+# Design FIR high-pass filter (10th order) with cutoff frequency above 2 Hz
+fs <- 60  # Example sampling frequency in Hz
+nyquist <- fs / 2
+cutoff <- 5 / nyquist  # Normalized cutoff frequency
+
+# Design the high-pass filter using fir1 function
+fir_filter <- fir1(10, cutoff, type = "high")
+
+# Apply the filter (two-pass to achieve zero-phase filtering)
+filtered_signal <- filtfilt(fir_filter, windowed_signal)
+
+# Visual diagnostics using ggplot2
+
+# Frequency response of the filter
+freq_response <- freqz(fir_filter, Fs = fs)
+freq_df <- data.frame(
+  Frequency = freq_response$f,
+  Magnitude = abs(freq_response$h)
+)
+
+ggplot(freq_df, aes(x = Frequency, y = Magnitude)) +
+  geom_line() +
+  labs(title = "Frequency Response of the Filter", x = "Frequency (Hz)", y = "Magnitude") +
+  theme_apa()
+
+# Original and filtered signals
+signal_df <- data.frame(
+  Sample = 1:length(padded_signal),
+  Original = padded_signal,
+  Filtered = filtered_signal
+)
+
+signal_df_melted <- melt(signal_df, id = "Sample")
+
+ggplot(signal_df_melted, aes(x = Sample, y = value, color = variable)) +
+  geom_line() +
+  labs(title = "Original and Filtered Signal", x = "Sample", y = "Amplitude") +
+  scale_color_manual(values = c("blue", "red"), labels = c("Original", "Filtered")) +
+  theme(legend.title = element_blank())
+
+# Power spectral density (PSD) of original and filtered signals
+psd_original <- spectrum(padded_signal, plot = FALSE)
+psd_filtered <- spectrum(filtered_signal, plot = FALSE)
+
+plot(psd_original$freq, 10*log10(psd_original$spec), type = "l", col = "blue", 
+     main = "Power Spectral Density", xlab = "Frequency (Hz)", ylab = "Power/Frequency (dB/Hz)")
+lines(psd_filtered$freq, 10*log10(psd_filtered$spec), col = "red")
+legend("topright", legend = c("Original", "Filtered"), col = c("blue", "red"), lty = 1)
+
+# Impulse response of the filter
+impulse_response <- filter(fir_filter, c(1, rep(0, 99)))
+impulse_df <- data.frame(
+  Sample = 1:length(impulse_response),
+  Amplitude = impulse_response
+)
+
+ggplot(impulse_df, aes(x = Sample, y = Amplitude)) +
+  geom_segment(aes(xend = Sample, yend = 0)) +
+  labs(title = "Impulse Response of the Filter", x = "Sample", y = "Amplitude")
+
+# Function to calculate ringing artifacts
+calculate_ringing <- function(original, filtered) {
+  difference <- original - filtered
+  ringing <- sum(abs(difference))
+  return(ringing)
+}
+
+# Calculate ringing artifacts
+ringing_artifacts <- calculate_ringing(rt_profile, filtered_signal)
+print(paste("Ringing Artifacts:", ringing_artifacts))
+
+# The `filtered_signal` is now the preprocessed signal
+
+```
+
+
+```{r}
+# Load necessary libraries
+library(signal)
+library(eegkit)
+library(ggplot2)
+
+# Example data
+rt_profile <- dplyr::filter(data.aggr, PART_ID == "140M21")$mean_corr
+
+# Zero-padding function
+zero_pad <- function(signal, pad_len) {
+  return(c(rep(0, pad_len), signal, rep(0, pad_len)))
+}
+
+# Apply zero-padding (50 points before and after)
+padded_signal <- zero_pad(rt_profile, 50)
+
+# Apply Hanning window
+hanning_window <- hanning(length(padded_signal))
+windowed_signal <- padded_signal * hanning_window
+
+# Design FIR filter (10th order) with cutoff frequency bands 0-2 Hz
+fs <- 60  # Example sampling frequency in Hz
+nyquist <- fs / 2
+cutoff <- 2 / nyquist
+
+# Design the filter using fir1 function
+fir_filter <- fir1(10, cutoff, type = "high")
+
+# Apply the filter (two-pass to achieve zero-phase filtering)
+filtered_signal <- filtfilt(fir_filter, windowed_signal)
+
+# Visual diagnostics
+
+# Plot frequency response of the filter
+freq_response <- freqz(fir_filter, Fs = fs)
+plot(freq_response$f, abs(freq_response$h), type = "l", log = "y", 
+     main = "Frequency Response of the Filter", 
+     xlab = "Frequency (Hz)", ylab = "Magnitude")
+
+# Plot the original and filtered signals
+plot(rt_profile, type = "l", col = "blue", main = "Original and Filtered Signal", xlab = "Sample", ylab = "Amplitude")
+lines(filtered_signal, col = "red")
+legend("topright", legend = c("Original", "Filtered"), col = c("blue", "red"), lty = 1)
+
+# Power spectral density (PSD) of original and filtered signals
+psd_original <- spectrum(rt_profile, plot = FALSE)
+psd_filtered <- spectrum(filtered_signal, plot = FALSE)
+
+plot(psd_original$freq, 10*log10(psd_original$spec), type = "l", col = "blue", 
+     main = "Power Spectral Density", xlab = "Frequency (Hz)", ylab = "Power/Frequency (dB/Hz)")
+lines(psd_filtered$freq, 10*log10(psd_filtered$spec), col = "red")
+legend("topright", legend = c("Original", "Filtered"), col = c("blue", "red"), lty = 1)
+
+# Formal diagnostics
+
+# Impulse response of the filter
+impulse_response <- filter(fir_filter, c(1, rep(0, 99)))
+plot(impulse_response, type = "h", main = "Impulse Response of the Filter", xlab = "Sample", ylab = "Amplitude")
+
+# Function to calculate ringing artifacts
+calculate_ringing <- function(original, filtered) {
+  difference <- original - filtered
+  ringing <- sum(abs(difference))
+  return(ringing)
+}
+
+# Calculate ringing artifacts
+ringing_artifacts <- calculate_ringing(rt_profile, filtered_signal)
+print(paste("Ringing Artifacts:", ringing_artifacts))
+
+# The `filtered_signal` is now the preprocessed signal
+
+```
+
+
+```{r}
+# Load necessary libraries
+library(signal)
+library(pracma)
+library(eegkit)
+
+# Example signal (replace this with your actual data)
+signal <- rnorm(100)  # Replace with actual signal data
+
+# Zero-padding (50 points before and after the signal)
+padding <- 50
+signal_padded <- c(rep(0, padding), signal, rep(0, padding))
+
+# Apply a Hanning window
+hanning_window <- hanning(length(signal_padded))
+signal_windowed <- signal_padded * hanning_window
+
+# Define the filter design
+fir_filter <- function(order, bands) {
+  fir1(order, bands / (0.5 * length(signal_windowed)), type = "pass")
+}
+
+# Frequency bands to filter
+bands <- list(c(0, 2), c(2, 5), c(8, 20))
+
+# Function to apply FIR filtering
+apply_fir_filter <- function(signal, filter_coefficients) {
+  filtfilt(filter_coefficients, signal)
+}
+
+# Apply filtering to each frequency band
+filtered_signals <- lapply(bands, function(band) {
+  filter_coefficients <- fir_filter(10, band)
+  apply_fir_filter(signal_windowed, filter_coefficients)
+})
+
+# Process each subject separately (assuming you have a list of signals for each subject)
+# Example list of subjects' signals
+subjects_signals <- list(
+  subject1 = rnorm(100),
+  subject2 = rnorm(100)
+  # Add more subjects as needed
+)
+
+# Function to preprocess signal for each subject
+preprocess_signal <- function(signal) {
+  signal_padded <- c(rep(0, padding), signal, rep(0, padding))
+  signal_windowed <- signal_padded * hanning(length(signal_padded))
+  filtered_signals <- lapply(bands, function(band) {
+    filter_coefficients <- fir_filter(10, band)
+    apply_fir_filter(signal_windowed, filter_coefficients)
+  })
+  return(filtered_signals)
+}
+
+# Apply preprocessing to each subject's signals
+preprocessed_signals <- lapply(subjects_signals, preprocess_signal)
+
+# Now `preprocessed_signals` contains the filtered signals for each subject
+
+```
+
+```{r}
+# Visualization function
+plot_signal <- function(signal, title) {
+  data <- data.frame(Time = 1:length(signal), Amplitude = signal)
+  ggplot(data, aes(x = Time, y = Amplitude)) +
+    geom_line() +
+    ggtitle(title) +
+    theme_minimal()
+}
+
+# Plot original signal
+plot_original <- plot_signal(signal, "Original Signal")
+
+# Plot zero-padded signal
+plot_padded <- plot_signal(signal_padded, "Zero-Padded Signal")
+
+# Plot windowed signal
+plot_windowed <- plot_signal(signal_windowed, "Windowed Signal")
+
+# Plot filtered signals
+plot_filtered_signals <- lapply(1:length(filtered_signals), function(i) {
+  plot_signal(filtered_signals[[i]], paste("Filtered Signal (", bands[[i]][1], "-", bands[[i]][2], " Hz)", sep = ""))
+})
+
+# Display all plots
+library(gridExtra)
+grid.arrange(plot_original, plot_padded, plot_windowed, nrow = 3)
+grid.arrange(grobs = plot_filtered_signals, ncol = 1)
+```
+```{r}
+
+# Function to plot filter characteristics
+plot_filter_characteristics <- function(filter_coefficients, band) {
+  freq_response <- freqz(filter_coefficients, 1, 512)
+  data <- data.frame(
+    Frequency = freq_response$f * 0.5 * length(signal_windowed),
+    Gain = abs(freq_response$h)
+  )
+  ggplot(data, aes(x = Frequency, y = Gain)) +
+    geom_line() +
+    ggtitle(paste("Filter Characteristics (", band[1], "-", band[2], " Hz)", sep = "")) +
+    theme_minimal() +
+    xlab("Frequency (Hz)") +
+    ylab("Gain")
+}
+
+# Plot filter characteristics for each band
+plot_filter_characteristics_list <- lapply(1:length(bands), function(i) {
+  filter_coefficients <- fir_filter(10, bands[[i]])
+  plot_filter_characteristics(filter_coefficients, bands[[i]])
+})
+
+# Display all plots
+grid.arrange(grobs = plot_filter_characteristics_list, ncol = 1)
+```
+```{r}
+freqz(fir_filter(10, c(0, 2)))
+```
+
+```{r}
+
+# Define the filter parameters
+M <- 5  # Order of the general FIR filter
+N <- 5  # Length of the moving average filter
+
+# Create the impulse response for the general FIR filter
+h_fir <- c(0.2, -0.3, 0.4, 0.1, -0.2)
+
+# Create the impulse response for the moving average filter
+h_ma <- rep(1/N, N)
+
+# Create sample data
+set.seed(123)  # For reproducibility
+x <- sin(seq(0, 4 * pi, length.out = 100)) + rnorm(100, sd = 0.5)
+
+# Perform convolution
+convolve_signal <- function(signal, filter) {
+  convolve(signal, filter, type = "open")  # Use "open" to get a longer result
+}
+
+y_fir <- convolve_signal(x, h_fir)
+y_ma <- convolve_signal(x, h_ma)
+
+# Trim convolution outputs to match length of input signal
+trim_length <- length(x)
+y_fir <- y_fir[1:trim_length]
+y_ma <- y_ma[1:trim_length]
+
+# Convert to data frames for ggplot2
+df_fir <- data.frame(Index = seq_along(h_fir), Coefficient = h_fir, Filter = "General FIR")
+df_ma <- data.frame(Index = seq_along(h_ma), Coefficient = h_ma, Filter = "Moving Average")
+df_combined <- bind_rows(df_fir, df_ma)
+
+df_signal <- data.frame(Index = seq_along(x), Original = x, FIR = y_fir, MA = y_ma)
+
+# Plotting
+p1 <- ggplot(df_fir, aes(x = Index, y = Coefficient, color = Filter)) +
+  geom_segment(aes(xend = Index, yend = 0), size = 1) +
+  geom_point(size = 3) +
+  labs(title = "Impulse Response (General FIR)",
+       x = "Index (k)", y = "Filter Coefficient (h[k])") +
+  theme_apa() + 
+  theme(plot.margin = margin(0.1, 0, 0, 0.1,  "cm")) +
+  theme(legend.position = "none")  # Remove legend
+
+p2 <- ggplot(df_ma, aes(x = Index, y = Coefficient, color = Filter)) +
+  geom_segment(aes(xend = Index, yend = 0), size = 1) +
+  geom_point(size = 3) +
+  labs(title = "Impulse Response (Moving Avg)",
+       x = "Index (k)", y = "") +
+  theme_apa() + 
+  theme(plot.margin = margin(0.1, 0, 0, 0, "cm")) +
+  theme(legend.position = "none")  # Remove legend
+
+p3 <- ggplot(df_signal, aes(x = Index)) +
+  geom_line(aes(y = Original, color = "Original Signal"), size = 0.8) +
+  geom_line(aes(y = FIR, color = "FIR Filtered"), size = 0.8) +
+  geom_line(aes(y = MA, color = "Moving Avg"), size = 0.8) +
+  labs(title = "Signal Filtering Comparison",
+       x = "Sample Index (n)", y = "Signal Amplitude") +
+  scale_color_manual(values = c("#006400", "#0D94E5", "#DF5069")) +
+  theme_apa() + 
+  theme(plot.margin = margin(0.2, 0, 0, 0.1, "cm")) +
+  theme(legend.position = "right") + # Remove legend
+  theme(legend.title=element_blank(), legend.text = element_text(size=12)) 
+
+
+# Arrange plots in a grid
+res <- grid.arrange(p1, p2, p3, ncol = 2, layout_matrix = rbind(c(1, 2), c(3)))
+ggsave("res.png", res,  width = 20, height = 12, units = "cm", dpi = 600)
+res
+
+```
+

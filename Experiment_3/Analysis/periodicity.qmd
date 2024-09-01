@@ -29,7 +29,7 @@ data.aggr <-
   data.files |>
   mutate(PART_ID = str_sub(PART_ID, 1, 6)) |>
   filter(Trial_type == "experiment", Rt > 0.0) |> # Experiment and no timeout
-  select(PART_ID, CSI, Corr) |>
+  select(PART_ID,CSI, Corr) |>
   mutate(t = CSI * 8.3) |>
   group_by(PART_ID, t) |>
   summarise(mean_corr = 100.0 * mean(Corr)) 
@@ -108,12 +108,12 @@ ljung_box_results |>
 ```{r}
 # Wybieramy osobę badaną do wizualizacji
 random_part_id <- data.aggr$PART_ID |> unique() |> sample(1)
-# random_part_id <- "97K21" # całkiem dużo widać
-# random_part_id <- "59K22" # też sporo, acz nieco gorzej
-# random_part_id <- "106M23" # trzy wyraźne wyspy 
-# random_part_id <- "146M21" # marnizna raczej
-# random_part_id <- "40K24" # globalna wolna fala powyżej 200ms i jeden peak
-# random_part_id <- "37K24" # jeden peak, reszta płaska
+# random_part_id <- "KS-K-2"" # jedno sensowne sprzężenie i dwa malutkie
+# random_part_id <- "MG-M-3" # jedna duża wolna fala przez 200 ms, i dwa malutkie + 
+# random_part_id <- "AM-K-2" # dwa sprzężenia po 50 ms + 
+# random_part_id <- "RC-M-2" # wolne 300 ms i szybkie 40 ms
+random_part_id <- "JR-K-2" # jedno sprzężenie pod oniec przez 100 ms + 
+#random_part_id <- "JP-M-2" # jeden peak 50 ms + 
 # random_part_id <- "36K20" # dwa peaki, reszta płaska
 # random_part_id <- "91M22" # trzy spore peaki, troche płaska reszta
 # random_part_id <- "118K23" # idealna wolna fala na całości 
@@ -132,9 +132,9 @@ my.data <- data.frame(time = my.data$t, x = my.data$mean_corr)
 
 my.w <- analyze.wavelet(my.data, "x",
 loess.span = 0,
-dt = 1, dj = 1/60,
+dt = 1, dj = 1/120,
 lowerPeriod = 1,
-upperPeriod = 16,
+upperPeriod = 32,
 make.pval = TRUE, n.sim = 200)
 
 ```
@@ -151,8 +151,7 @@ wt.image(
   # legend.params = list(lab = "wavelet power levels", mar = 4.7),
   timelab = "PDI in [ms]",
   periodlab = " Period in [data points per cycle]",
-  spec.time.axis = list(at = seq(0, 48, by = 12),
-                        labels = seq(200, 1000, by = 200))
+  spec.time.axis = list(at= seq(0, 60, by = 12), labels = seq(400, 900, by=100))
   # spec.period.axis = list(at = c(1, 2, 4, 8, 16), labels = c(16, 8, 4, 2, 1))
 
 )
@@ -165,8 +164,9 @@ reconstruct(
   lwd = c(1, 2),
   legend.coords = "bottomleft",
   only.sig = TRUE,
-  spec.time.axis = list(at = seq(0, 48, by = 12),
-                        labels = seq(200, 1000, by = 200)),
+  spec.time.axis = list(at= seq(0, 60, by = 12), labels = seq(400, 900, by=100)),
+  
+
     timelab = "PDI in [ms]"
 )
 ```

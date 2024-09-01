@@ -1,0 +1,38 @@
+# All values in no of frames
+# Looks
+BACKGROUND_COLOR: darkgray
+FIX_CROSS_TIME: 30
+FIX_CROSS_COLOR: black
+QUE_COLOR: darkred
+QUE_RADIUS: 20
+QUE_SPEED: 2
+QUE_FREQ: 3
+QUE_SHIFT: 40
+STIM_SIZE: 25
+STIM_SHIFT: 600
+REACTION_KEYS_SEP: 30
+STIM_COLOR: dimgray
+# Technicalities
+FRAME_RATE: 60
+# Logic
+STIM_LETTERS: ←→↑↓
+REACTION_TIME: 90
+MASK_TIME: 10
+REACTION_KEYS: [ left, right, up, down ]
+REST_TIME_RANGE: [ 20, 40 ]
+## Training
+TRAINING_BLOCKS: [ [ 10, 30, PS ], [ 10, 45, AS ] ] # (no_trials_blk_1, stim_time_blk_1, AS/PS), (..., ..., ...), ..
+ADAPTIVE_BLOCKS: [ PS, AS ]
+START_STIM_TIME_AS: 20 # At start, adaptively changed during exp
+START_STIM_TIME_PS: 10 # At start, adaptively changed during exp
+MAX_REVS_TRAIN: 4
+N_UP: 2
+N_DOWN: 1
+## Experiment
+INTRA_BLOCK_TRAINING: 5
+MAX_REVS_EXP: 14
+# Half of participants starts with a PS, second half with AS
+EXP_BLOCKS: [ [ PS, AS, AS, PS, PS, AS, AS, PS ], [ AS, PS, PS, AS, AS, PS, PS, AS ] ]
+CSI_POSSIBLE: [ 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46,47, 48, 49, 50 ]
+# Works as jitter 400-800 ms.
+
