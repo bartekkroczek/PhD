@@ -222,4 +222,46 @@ print(p4)
 ```
 
 
+```{r}
+if (!require(signal)) install.packages("signal")
+library(signal)
+
+# Define filter parameters
+n <- 51  # Filter order
+fc <- 0.1  # Cutoff frequency (normalized)
+
+# Design FIR low-pass filter
+fir_coeff <- fir1(n, fc, type="low", window=hamming(n+1))
+
+# Calculate frequency response manually
+freq <- seq(0, 0.5, length.out=512)
+H <- sapply(freq, function(f) {
+  sum(fir_coeff * exp(-2i * pi * f * (0:n)))
+})
+
+# Calculate step response
+t <- 0:100
+step_input <- c(rep(0, 50), rep(1, 51))
+step_response <- filter(fir_coeff, 1, step_input)
+
+# Plot frequency response
+par(mfrow=c(2,2))
+plot(freq, abs(H), type="l", xlab="Normalized Frequency", 
+     ylab="Magnitude", main="Frequency Response (Magnitude)")
+plot(freq, Arg(H), type="l", xlab="Normalized Frequency", 
+     ylab="Phase (radians)", main="Frequency Response (Phase)")
+
+# Plot step response
+plot(t, step_input, type="s", xlab="Sample", ylab="Amplitude", 
+     main="Step Input", ylim=c(0,1.2))
+plot(t, step_response, type="l", xlab="Sample", ylab="Amplitude", 
+     main="Step Response", ylim=c(0,1.2))
+
+# Reset plot layout
+par(mfrow=c(1,1))
+
+# Print filter coefficients
+cat("FIR Filter Coefficients:\n")
+print(fir_coeff)
+```
 

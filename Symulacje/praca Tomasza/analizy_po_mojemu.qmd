@@ -1,0 +1,226 @@
+---
+title: "analizy_po_mojemu"
+format: html
+editor: source
+
+---
+
+```{r libs}
+library(tidyverse)
+library(fs)
+library(furrr)
+library(progressr)
+source("functions2.r")
+
+```
+
+```{r globals}
+freq_low = 1/60
+```
+
+```{r}
+csv_files <- dir_ls(path = "../../Experiment_1/Data/", glob = "*.csv")
+
+df_raw <- csv_files %>%
+  map_df(~read_csv(.))
+```
+```{r}
+glimpse(df)
+```
+
+
+```{r}
+df <- df_raw %>%
+  rename(id = PART_ID,
+         corr = Corr) %>%
+  filter(Trial_type == "experiment") %>%
+  group_by(id) %>%
+  mutate(mean_corr = mean(corr)) %>%
+  filter(mean_corr > 0.6) %>%
+  group_by(CSI, id) %>%
+  summarize(corr = mean(corr), .groups = "drop") %>%
+  mutate(time = CSI * freq_low) |> 
+  arrange(id, CSI)
+```
+
+
+```{r}
+fftwhole <- function(data, FUN = mean) {
+  temp <- remove_trend(
+    hanning_window(preprocess(data, 4, 0), .(id)),
+    type = "pol",
+    degree = 2 * 2 * diff(range(data$time))
+  )
+  temp$len <- diff(range(data$time))
+  aggregate(fft ~ freq, FUN = FUN, fourier(temp, .(id)))
+}
+
+permutevals <- function(data, columns) {
+  ret <- ddply(data, columns, function(df) {
+    cbind(df$time, melt(sample(df$corr)))
+  })
+  ret <- dplyr::rename(ret, corr = "value")
+  ret <- dplyr::rename(ret, time = "df$time")
+  ret
+}
+
+makedistr <- function(data,
+                      n = 10000,
+                      columns = .(id),
+                      FUN = fftwhole) {
+  freq <- (seq(max(with(data, tapply(time, id, length)
+  ))) - 1) / diff(range(data$time))
+  ret <- matrix(NA, nrow = length(freq), ncol = n)
+  rownames(ret) <- freq
+  pb <- txtProgressBar(min = 0, max = n, style = 3)
+  for (i in seq(n)) {
+    ret[, i] <- FUN(permutevals(data, columns))$fft
+    setTxtProgressBar(pb, i)
+  }
+  ret
+}
+
+plotci <- function(cimat,
+                   estdf,
+                   maxfreq = 31,
+                   alpha = .05,
+                   gralpha = .05) {
+  cidf <- melt(cimat)
+  names(cidf) <- c("freq", "rep", "fft")
+  cigdf <- return_ci(cimat, test = "upper", alpha)
+  ggplot(subset(cidf, freq <= maxfreq), aes(freq, fft, group = rep)) + geom_line(alpha =
+                                                                                   gralpha) +
+    geom_line(
+      data = subset(cigdf, freq <= maxfreq),
+      aes(freq, upper, group = 1),
+      colour = "blue"
+    ) +
+    geom_line(
+      data = subset(cigdf, freq <= maxfreq),
+      aes(freq, lower, group = 1),
+      colour = "blue"
+    ) +
+    geom_line(data = subset(estdf, freq <= maxfreq),
+              colour = "red",
+              aes(group = 1))
+}
+
+return_ci <- function(cimat,
+                      test = c("lower", "two-sided", "upper"),
+                      alpha = .05) {
+  tst <- match.arg(test)
+  ret <- data.frame(
+    freq = as.numeric(rownames(cimat)),
+    lower = rep(NaN, nrow(cimat)),
+    upper = NaN
+  )
+  for (i in seq(nrow(cimat))) {
+    tmp <- sort(c(cimat[i, ], -Inf, Inf))
+    if (tst == "lower") {
+      ret$lower[i] <- quantile(tmp, alpha)
+    }
+    if (tst == "upper") {
+      ret$upper[i] <- quantile(tmp, 1 - alpha)
+    }
+    else{
+      ret$lower[i] <- quantile(tmp, alpha / 2)
+      ret$upper[i] <- quantile(tmp, 1 - alpha / 2)
+    }
+  }
+  ret
+}
+```
+
+
+```{r}
+library(tidyverse)
+
+pvals <- function(cimat, estdf, maxfreq = 31, method = "holm") {
+  # Helper function to add significance symbols
+  add_sig_symbols <- function(p) {
+    symbols <- symnum(p, corr = FALSE, cutpoints = c(0, .001, .01, .05, .1, 1),
+                      symbols = c("***", "**", "*", ".", " "))
+    paste(round(p, 3), symbols)
+  }
+  
+  # Convert matrix to tibble and add frequency column
+  ci_data <- cimat %>%
+    as_tibble(rownames = "Frequency") %>%
+    mutate(Frequency = as.numeric(Frequency))
+  
+  # Calculate p-values and confidence intervals
+  result <- ci_data %>%
+    filter(Frequency <= maxfreq) %>%
+    rowwise() %>%
+    mutate(
+      Estimate = estdf$fft[which(estdf$freq == Frequency)],
+      CIlow = -Inf,
+      CIupp = quantile(c_across(-Frequency), 0.95),
+      p = 1 - mean(c(c_across(-Frequency), Inf, -Inf) < Estimate)
+    ) %>%
+    ungroup() %>%
+    mutate(
+      p.adj = p.adjust(p, method = method),
+      p = add_sig_symbols(p),
+      p.adj = add_sig_symbols(p.adj)
+    ) %>%
+    select(Frequency, Estimate, CIlow, CIupp, p, p.adj)
+  
+  return(result)
+}
+
+plotci <- function(cimat, estdf, maxfreq = 31, alpha = 0.05, gralpha = 0.05) {
+  # Convert confidence interval matrix to long format
+  cidf <- cimat %>%
+    as_tibble(rownames = "freq") %>%
+    pivot_longer(cols = -freq, names_to = "rep", values_to = "fft") %>%
+    mutate(freq = as.numeric(freq))
+
+  # Calculate confidence intervals
+  cigdf <- return_ci(cimat, test = "upper", alpha)
+
+  # Create the plot
+  ggplot() +
+    # Plot individual lines for each repetition
+    geom_line(
+      data = filter(cidf, freq <= maxfreq),
+      aes(x = freq, y = fft, group = rep),
+      alpha = gralpha
+    ) +
+    # Plot upper confidence interval
+    geom_line(
+      data = filter(cigdf, freq <= maxfreq),
+      aes(x = freq, y = upper),
+      colour = "blue"
+    ) +
+    # Plot lower confidence interval
+    geom_line(
+      data = filter(cigdf, freq <= maxfreq),
+      aes(x = freq, y = lower),
+      colour = "blue"
+    ) +
+    # Plot estimated values
+    geom_line(
+      data = filter(estdf, freq <= maxfreq),
+      aes(x = freq, y = fft),
+      colour = "red"
+    ) +
+    # Set labels and title
+    labs(
+      x = "Frequency",
+      y = "FFT",
+      title = "Confidence Intervals and Estimates"
+    ) +
+    # Set theme for better appearance
+    theme_minimal()
+}
+
+
+
+```
+```{r}
+ci <- makedistr(df, 100)
+#plotci(ci, fftwhole(df1a))
+#pvals(ci, fftwhole(df1a))
+```
+

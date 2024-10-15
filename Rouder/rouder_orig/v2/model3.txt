@@ -1,0 +1,16 @@
+
+model{
+    for (n in 1:N) {
+      y[n]~dnorm(
+        mu[sub[n],task[n]],
+        pSig[task[n]])}
+    for (i in 1:I){
+      for (j in 1:J){
+        mu[i,j]~dnorm(nu[j]+(lambda[j]*phi[i]),pDel)}} 
+    for (j in 1:J) {pSig[j]~dgamma(.5,.5)}
+    for (j in 1:J) {
+      nu[j]~dnorm(75,1/50^2)
+      lambda[j]~dnorm(30,1/50^2)T(0,)}
+    for (i in 1:I) {phi[i]~dnorm(0,1)}
+    pDel~dgamma(.5,.5)
+}
