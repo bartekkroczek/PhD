@@ -6,6 +6,9 @@ library(dplyr)
 library(reshape2)
 library(tidyverse)
 library(detrendeR)
+library(progressr)
+library(future)
+library(furrr)
 
 source("functions2.r")
 
@@ -172,7 +175,7 @@ pvals <- function(cimat,
   ret
 }
 
-ci <- makedistr(d1a, 1000)
+ci <- makedistr(d1a, 100)
 ## plotci(ci, fftwhole(d1a))
 
 ## pvals(ci, fftwhole(d1a))

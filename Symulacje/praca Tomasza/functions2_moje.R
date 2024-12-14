@@ -1,32 +1,32 @@
 library(imputeTS)
 
-gen_signal <- function(Npart, Nobs, time, freq, ampl) {
-  ret <- NULL
-  for (i in seq(Npart)) {
-    phase <- phase <- runif(1, 0, 2 * pi)
-    ret <- c(ret, sin(seq(Nobs) / Nobs * (2 * pi * time * freq) + phase) *
-               ampl)
-  }
-  ret
-}
+#gen_signal <- function(Npart, Nobs, time, freq, ampl) {
+#  ret <- NULL
+#  for (i in seq(Npart)) {
+#    phase <- phase <- runif(1, 0, 2 * pi)
+#    ret <- c(ret, sin(seq(Nobs) / Nobs * (2 * pi * time * freq) + phase) *
+#               ampl)
+#  }
+#  ret
+#}
 
-gen_dataset <- function(Npart,
-                        Nobs,
-                        time,
-                        mnns,
-                        mxns,
-                        freq,
-                        ampl,
-                        trendfreq,
-                        trendampl) {
-  data.frame(
-    id = paste0("p", rep(seq(Npart), each = Nobs)),
-    time = rep(seq(0, time, length.out = Nobs), Npart),
-    corr = runif(Npart * Nobs, mnns, mxns) +
-      gen_signal(Npart, Nobs, time, freq, ampl) +
-      gen_signal(Npart, Nobs, time, trendfreq, trendampl)
-  )
-}
+#gen_dataset <- function(Npart,
+#                        Nobs,
+#                        time,
+#                        mnns,
+#                        mxns,
+#                        freq,
+#                        ampl,
+#                        trendfreq,
+#                        trendampl) {
+#  data.frame(
+#    id = paste0("p", rep(seq(Npart), each = Nobs)),
+#    time = rep(seq(0, time, length.out = Nobs), Npart),
+#    corr = runif(Npart * Nobs, mnns, mxns) +
+#      gen_signal(Npart, Nobs, time, freq, ampl) +
+#      gen_signal(Npart, Nobs, time, trendfreq, trendampl)
+#  )
+#}
 
 preprocess <- function(data,
                        outlier = Inf,
@@ -67,7 +67,9 @@ preprocess <- function(data,
   ret[order(ret$id), ]
 }
 
+
 hanning_window <- function(data, columns) {
+  # TODO: PO co hanning window?
   ret <- ddply(data, columns, function(df) {
     cbind(df$time, melt(df$corr * hanning(length(df$corr))), df$padding)
   })
