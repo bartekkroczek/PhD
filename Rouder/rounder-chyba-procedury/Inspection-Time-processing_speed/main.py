@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 # -*- coding: latin-1 -*-
-print('a')
 import atexit
 import codecs
 import csv

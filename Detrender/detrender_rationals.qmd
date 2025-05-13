@@ -1,0 +1,170 @@
+---
+title: "detrender_rationals"
+format: html
+---
+
+
+```{r}
+library(devtools)
+```
+
+```{r}
+n <- 48 # no. of data points
+time <- 1 # how many sec artifical signal lasts
+freq <- 6 # frequency of miningful oscilaltion
+t <- seq(0, time, length.out = n)
+set.seed(123) # make runif getting this same result every time
+noise <- runif(n)
+trend <- seq(0.01, 3, length.out = n)
+sine <- sin(2 * pi * freq * t) / 2
+signal <- sine + trend + noise
+
+f <- seq_along(t) / time
+y <- fft(signal)
+mag <- sqrt(Re(y)^2 + Im(y)^2) * 2 / n
+
+layout(matrix(c(1, 2), 2, 1, byrow = TRUE))
+plot(t, signal,
+     type = "l", xlab = "Time [s]", ylab = "sine + trend + noise",
+     main = "Example signal containing 6 Hz oscillation, trend and noise"
+)
+plot(f[1:length(f) / 2], mag[1:length(f) / 2],
+     type = "l", xlab = "Frequency [Hz]", ylim = c(0, 0.5),
+     ylab = "Amplitude", main = "Frequency spectra, oscillation is hard to spot"
+)
+```
+```{r}
+n <- 48 # no. of data points
+time <- 1 # how many sec artifical signal lasts
+freq <- 6 # frequency of miningful oscilaltion
+t <- seq(0, time, length.out = n)
+set.seed(123) # make runif getting this same result every time
+noise <- runif(n)
+trend <- seq(0.01, 3, length.out = n)
+sine <- sin(2 * pi * freq * t) / 2
+signal <- sine + trend + noise
+
+f <- seq_along(t) / time
+y <- fft(signal)
+mag <- sqrt(Re(y)^2 + Im(y)^2) * 2 / n
+
+# Set margins to be tighter and add space for labels
+par(mfrow=c(2,1), mar=c(4,4,1,1), oma=c(0,0,1,0))
+
+# First plot (A)
+plot(t, signal,
+     type = "l", 
+     xlab = "Time [s]", 
+     ylab = "sine + trend + noise",
+     main = ""  # remove title
+)
+# Add "A" label in top-left corner
+mtext(expression(bold("A")), side=3, line=-1.5, adj=0.02, cex=1.2)
+
+# Second plot (B)
+plot(f[1:length(f) / 2], mag[1:length(f) / 2],
+     type = "l", 
+     xlab = "Frequency [Hz]", 
+     ylim = c(0, 0.5),
+     ylab = "Amplitude",
+     main = ""  # remove title
+)
+# Add "B" label in top-left corner
+mtext(expression(bold("B")), side=3, line=-1.5, adj=0.02, cex=1.2)
+
+# Reset the plotting parameters
+par(mfrow=c(1,1))
+```
+```{r}
+roll_mean <- (function(x, n = 5) filter(x, rep(1 / n, n), sides = 2))
+roll_mean_ord <- 5
+mov_avg <- na.omit(signal - roll_mean(signal, roll_mean_ord))
+
+f <- seq_along(mov_avg) / time
+y <- fft(mov_avg)
+mag <- sqrt(Re(y)^2 + Im(y)^2) * 2 / n
+
+# Set up tight layout
+par(mfrow = c(2, 1), mar = c(4, 4, 1, 1), oma = c(0, 0, 0, 0))
+
+# Plot A
+plot(seq_along(mov_avg) + floor(roll_mean_ord / 2), mov_avg,
+     type = "l", xlab = "Time [s]", ylab = "sine + noise + artifact?")
+# Add "A" label with lower y position
+text(x = par("usr")[1] + 0.02 * diff(par("usr")[1:2]), 
+     y = par("usr")[4] - 0.15 * diff(par("usr")[3:4]), 
+     labels = "A", font = 2)
+
+# Plot B
+plot(f[1:length(f) / 2], mag[1:length(f) / 2],
+     type = "l", xlab = "Frequency [Hz]", ylim = c(0, 0.5), ylab = "Amplitude")
+# Add "B" label with lower y position
+text(x = par("usr")[1] + 0.02 * diff(par("usr")[1:2]), 
+     y = par("usr")[4] - 0.15 * diff(par("usr")[3:4]), 
+     labels = "B", font = 2)
+
+# Add improved arrows and text
+arrows(x0 = 15.1, y0 = 0.37, x1 = 9.1, y1 = 0.17, 
+       length = 0.08, angle = 20, lwd = 0.5)
+arrows(x0 = 15.4, y0 = 0.37, x1 = 12.05, y1 = 0.185, 
+       length = 0.08, angle = 20, lwd = 0.5)
+arrows(x0 = 15.7, y0 = 0.37, x1 = 16, y1 = 0.165, 
+       length = 0.08, angle = 20, lwd = 0.5)
+arrows(x0 = 16.0, y0 = 0.37, x1 = 17.95, y1 = 0.13, 
+       length = 0.08, angle = 20, lwd = 0.5)
+text(x = 15.6, y = 0.43, label = "Artifacts?", cex = 0.8)
+
+arrows(x0 = 3.9, y0 = 0.38, x1 = 6.8, y1 = 0.22, 
+       length = 0.08, angle = 20, lwd = 0.5)
+text(x = 3.75, y = 0.43, label = "Desired effect", cex = 0.8)
+```
+
+```{r}
+library(detrendeR)
+
+detrend <- detrendeR::gettrend(signal, degree = 2)
+
+f <- seq_along(t) / time
+y <- fft(detrended(detrend))
+mag <- sqrt(Re(y)^2 + Im(y)^2) * 2 / n
+
+# Set margins for tight layout
+par(mfrow = c(3, 1), mar = c(4, 4, 1, 1), oma = c(0, 0, 0, 0))
+
+# Plot A
+plot(t, signal,
+     type = "l", 
+     xlab = "Time [s]", 
+     ylab = "sine + noise + trend"
+)
+lines(t, detrend,  col = "#8B0000", lty = 1)
+
+text(par("usr")[1] + 0.05 * diff(par("usr")[1:2]),
+     par("usr")[4] - 0.1 * diff(par("usr")[3:4]),
+     "A", font = 2)
+
+# Plot A
+plot(t, detrended(detrend),
+     type = "l", 
+     xlab = "Time [s]", 
+     ylab = "sine + noise"
+)
+# Add label A in the plot box
+text(par("usr")[1] + 0.05 * diff(par("usr")[1:2]),
+     par("usr")[4] - 0.1 * diff(par("usr")[3:4]),
+     "B", font = 2)
+
+# Plot B
+plot(f[1:length(f) / 2], mag[1:length(f) / 2],
+     type = "l", 
+     xlab = "Frequency [Hz]", 
+     ylim = c(0, 0.5),
+     ylab = "Amplitude"
+)
+# Add label B in the plot box
+text(par("usr")[1] + 0.05 * diff(par("usr")[1:2]),
+     par("usr")[4] - 0.1 * diff(par("usr")[3:4]),
+     "C", font = 2)
+```
+
+

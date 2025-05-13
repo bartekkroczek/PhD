@@ -1,0 +1,16 @@
+Stimuli and Apparatus
+Participants were seated at a computer terminal and instructed to maintain fixation on a central cross throughout each trial. Visual stimuli were presented on a 1920×1080 pixel display with a 60 Hz refresh rate using PsychoPy. Two types of stimuli were employed: filled grey squares (80×80 px) and filled grey circles (radius 40 px), each displayed against a black background. Stimuli appeared at symmetric lateral positions (±60 px from center).
+
+Procedure
+Each trial began with a central fixation cross displayed for 45 frames (750 ms). After a blank interval of 4 frames (67 ms), stimuli were presented according to one of two task versions:
+
+1. Appearance Task (Squares): A single square appeared at either the left or right position for a variable stimulus onset asynchrony (SOA) and was followed by a simultaneous presentation of both squares for 15 frames (250 ms).
+2. Disappearance Task (Circles): Both circles were initially displayed for 15 frames (250 ms) and one circle then remained visible alone for the SOA.
+
+Following stimulus presentation, participants had up to 240 frames (4 s) to indicate which stimulus appeared/disappeared first by pressing the left or right arrow key. Feedback ("Correct", "Incorrect", or "No response") was displayed during the training phase.
+
+Training and Adaptive Staircase
+Participants first completed two training blocks of 10 trials each, with fixed SOAs of 8 frames (133 ms) and 3 frames (50 ms). Accuracy feedback was provided after each trial. In the main experimental phase, a two-down one-up adaptive staircase was initiated (starting SOA: 3 frames; termination criterion: 10 reversals) to converge on the 70.7% correct threshold. SOA values were adjusted after each trial based on response accuracy. Intertrial intervals were randomized between 45 and 60 frames (750–1 000 ms).
+
+Data Recording
+For each trial, the following measures were recorded: SOA, response correctness, reaction time (measured from stimulus onset to keypress), reversal count in the staircase, and trial number. SOA estimates (in frames) were converted to milliseconds based on the 60 Hz refresh rate.

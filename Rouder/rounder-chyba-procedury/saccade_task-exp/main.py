@@ -159,7 +159,7 @@ def main():
     clock: core.Clock = core.Clock()
     conf: dict = yaml.load(open('config.yaml', encoding='utf-8'), Loader=yaml.SafeLoader)
 
-    win = visual.Window(list(SCREEN_RES.values()), fullscr=True, monitor='testMonitor', units='pix',
+    win = visual.Window(list(SCREEN_RES.values()), fullscr=False, monitor='testMonitor', units='pix',
                         screen=0, color=conf['BACKGROUND_COLOR'])
     event.Mouse(visible=False, newPos=None, win=win)  # Make mouse invisible
     FRAME_RATE: int = get_frame_rate(win)

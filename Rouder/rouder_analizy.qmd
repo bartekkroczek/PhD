@@ -1,0 +1,345 @@
+---
+title: "rouder_analizy"
+format: html
+---
+
+## Mine 
+
+
+```{r}
+# Load libraries
+library(tidyverse)
+library(fs)
+library(patchwork)
+library(lavaan)
+library(ggplot2)
+library(psych)
+library(corrplot)
+```
+
+
+```{r}
+create_saccade_plots <- function(df, cors, contrast, y_lab) {
+  library(ggplot2)
+  library(patchwork)
+  
+  p1 <- ggplot(df, aes(x = pro, y = anti)) +
+    geom_point(color = scales::alpha("blue", 0.3), size = 3) +
+    geom_smooth(method = "lm", se = TRUE, linetype = 2, color = "black") +
+    annotate("text", x = 175, y = max(df$anti) * 0.9, label = paste0("R = ", cors[1,2])) +
+    labs(x = "Prosaccade Duration", y = "Antisaccade Duration") +
+  #  coord_fixed(ratio = 1, xlim = c(100, 450), ylim = c(175, 625)) +
+    theme_minimal() +
+    ggtitle("A.")
+  
+  p2 <- ggplot(df, aes(x = pro, y = .data[[contrast]])) +
+    geom_point(color = "blue", size = 3, alpha = 0.3) +
+    geom_smooth(method = "lm", se = TRUE, linetype = 2, color = "black") +
+    annotate("text", x = 200, y = max(df[[contrast]] * 0.9), label = paste0("R = ", cors[1,3])) +
+    labs(x = "Prosaccade Duration", y = y_lab) +
+   # coord_cartesian(xlim = c(100, 450), ylim = c(0, 250)) +
+    theme_minimal() +
+    ggtitle("B.")
+  
+  p3 <- ggplot(df, aes(x = anti, y = .data[[contrast]])) +
+    geom_point(color = "blue", size = 3, alpha = 0.3) +
+    geom_smooth(method = "lm", se = TRUE, linetype = 2, color = "black") +
+    annotate("text", x = 250, y = max(df[[contrast]] * 0.9), label = paste0("R = ", cors[2,3])) +
+    labs(x = "Antisaccade Duration", y = y_lab) +
+    #coord_cartesian(xlim = c(175, 625), ylim = c(0, 225)) +
+    theme_minimal() +
+    ggtitle("C.")
+  
+  return(p1 + p2 + p3 + plot_layout(ncol = 3))
+}
+```
+
+```{r}
+# Load data
+
+files <- dir_ls("data/anti-pro-saccade/beh", glob = "*.csv")
+
+raw_data <- files %>%
+  map_df(read_csv, col_types = cols(
+    Block_no = col_integer(),
+    Block_type = col_character(),
+    Trial_no = col_integer(),
+    CSI = col_integer(),
+    Level = col_integer(),
+    Reversal = col_integer(),
+    Revs_count = col_integer()
+  )) 
+glimpse(raw_data)
+```
+
+
+```{r}
+# This value can be obtained from a last reversal in each block.
+meaningful_revs_count <- 10
+
+too_long_stimtimes <- raw_data |>
+  filter(`Stimulus Time` >= 60) |> # 13 person removed
+  select(PART_ID) |>
+  unique()
+
+
+clean_data <- raw_data |>
+  filter(!PART_ID %in% too_long_stimtimes$PART_ID) |>
+  filter(PART_ID != "Y2-S2-205K20") |> # Uncomplete processing spead measure
+  filter(Revs_count >= meaningful_revs_count & Reversal == 1) |> # Stim times only for reversal trials
+  select(PART_ID, Block_no, Block_type, `Stimulus Time`, Revs_count) |>
+  group_by(PART_ID, Block_no) |>
+  summarise(duration_ms = mean(`Stimulus Time`)  * (1000 / 60), 
+            Block_type = first(Block_type), 
+            .groups = "drop") 
+```
+
+
+# By block analiysis
+```{r}
+clean_data |>
+  pivot_wider(
+    names_from = Block_type,
+    values_from = duration_ms,
+    names_prefix = "type_"
+  ) |>
+  rename(pro = type_PS, anti = type_AS) |>
+  drop_na(pro) |> 
+  group_by(PART_ID) |>
+  mutate(occurrence_number = row_number()) |>
+  ungroup() |>
+  filter(PART_ID %in% sample(unique(clean_data$PART_ID), 10)) |>
+  ggplot(aes(x = occurrence_number, y = pro, colour = PART_ID)) +
+  geom_point() +
+  geom_line() +
+  theme(legend.position = "none")
+```
+
+```{r}
+# Calculate mean durations by subject and block type
+mean_by_type <- clean_data |>
+  group_by(PART_ID, Block_type) |>
+  summarize(mean_duration = mean(duration_ms), .groups = "drop") |>
+  pivot_wider(
+    names_from = Block_type,
+    values_from = mean_duration,
+    names_prefix = "type_"
+  ) |>
+  rename(pro = type_PS, anti = type_AS) |>
+  mutate(diff = anti - pro) |>
+  filter(diff > 0 ) # Removes 11 perticipants with negative diff
+mean_by_type
+
+```
+
+
+## Processing speed factor
+
+
+```{r}
+temporal_order <- dir_ls("data/Temporal-order/beh", glob = "*.csv")
+inspection_time <- dir_ls("data/Inspection-Time/beh", glob = "*.csv")
+
+temporal_order <- temporal_order |>
+  map_df(read_csv, col_types = cols(
+    Reversal = col_integer(),
+    Reversal_count = col_integer()
+  ))
+
+inspection_time <- inspection_time |>
+  map_df(read_csv, col_types = cols(
+     Reversal = col_integer(),
+     Reversal_count = col_integer()
+   ))
+
+```
+
+```{r}
+temporal_order <- temporal_order |>
+  filter(Reversal == 1 & Reversal_count > meaningful_revs_count & Training == "exp") |>
+  group_by(PART_ID, Stimuli) |>
+  summarize(mean_soa = mean(SOA), .groups = "drop") |>
+  pivot_wider(
+    names_from = Stimuli,
+    values_from = mean_soa,
+    names_prefix = "temporal_") |> 
+  filter(temporal_CIRCLES < 10 & temporal_SQUARES < 10)
+```
+
+```{r}
+temporal_order |> ggplot(aes(x = temporal_CIRCLES, y = temporal_SQUARES)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE, linetype = 2, color = "black") +
+  labs(x = "Circles SOA", y = "Squares SOA") +
+  theme_minimal()
+```
+
+```{r}
+inspection_time <- inspection_time |>
+  filter(Reversal == 1 & Reversal_count > meaningful_revs_count & Training == "exp") |>
+  group_by(PART_ID, Stimuli) |>
+  summarize(mean_soa = mean(SOA), .groups = "drop") |>
+  pivot_wider(
+    names_from = Stimuli,
+    values_from = mean_soa,
+    names_prefix = "inspection_"
+  ) |> filter(inspection_CIRCLES < 15 & inspection_SQUARES < 15)
+```
+
+```{r}
+inspection_time |> ggplot(aes(x = inspection_CIRCLES, y = inspection_SQUARES)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE, linetype = 2, color = "black") +
+  labs(x = "Circles SOA", y = "Squares SOA") +
+  theme_minimal()
+```
+
+
+```{r}
+processing_speed <- inner_join(temporal_order, inspection_time, by = "PART_ID") |> drop_na()
+
+processing_speed <- semi_join(processing_speed, mean_by_type, by = "PART_ID") # only full files
+mean_by_type <- semi_join(mean_by_type, processing_speed, by = "PART_ID") # only full files
+#processing_speed <- processing_speed |>
+#  drop_na()
+
+```
+
+## CFA Preliminary
+
+```{r}
+# Extract just the numeric variables for analysis
+df_numeric <- processing_speed |> select(-PART_ID)
+
+# 1. Correlation matrix
+corr_matrix <- cor(df_numeric)
+corrplot(corr_matrix, method = "number")
+
+# 2. KMO and Bartlett's Test (sampling adequacy)
+KMO(df_numeric)
+cortest.bartlett(df_numeric)
+```
+
+
+```{r}
+# 3. Determine number of factors
+fa.parallel(df_numeric, fa = "fa")
+
+# 4. Quick EFA to check if one-factor solution is reasonable
+efa_result <- fa(df_numeric, nfactors = 1)
+print(efa_result$loadings)
+print(efa_result$communality)  # Variance explained per variable
+```
+- Sample size: CFA typically requires 100+ observations (minimum 5-10 per parameter)
+- Adequacy: KMO should be >0.6, Bartlett's test should be significant
+- Correlations: Variables should correlate moderately (0.3-0.9)
+- Variance explained: The factor should explain substantial variance
+
+## CFA
+
+```{r}
+model <- '
+  processing_speed =~ temporal_SQUARES + inspection_CIRCLES + inspection_SQUARES
+'
+
+# Fit the CFA model
+fit <- cfa(model, data = processing_speed)
+
+# Extract factor scores
+factor_scores <- lavaan::predict(fit)
+
+# Scale factor scores to 0-1 range using min-max normalization
+min_score <- min(factor_scores)
+max_score <- max(factor_scores)
+normalized_scores <- (factor_scores - min_score) / (max_score - min_score)
+
+# Create result dataframe
+processing_speed_df <- data.frame(
+  PART_ID = processing_speed$PART_ID,
+  processing_speed = factor_scores
+)
+
+# Display the result
+print(processing_speed_df)
+```
+
+```{r}
+df <- inner_join(mean_by_type, processing_speed_df, by = "PART_ID")
+```
+```{r}
+anti_join(mean_by_type, processing_speed_df, by = "PART_ID")
+```
+```{r}
+head(df)
+```
+## Results 
+
+
+```{r}
+cors <- mean_by_type |>
+  select(pro, anti, diff) |>
+  cor() |>
+  round(2)
+
+create_saccade_plots(df, cors, contrast = "diff", y_lab = "Antisaccade - Prosaccade")
+```
+
+
+```{r}
+# Calculate correlations
+cors <- df |>
+  select(pro, anti, processing_speed) |>
+  cor() |>
+  round(2)
+
+create_saccade_plots(df, cors, contrast = "processing_speed", y_lab = "Processing Speed")
+```
+
+
+
+```{r}
+# Create plots
+
+```
+
+# Is prosaccade really a processing speed?
+
+```{r}
+tmp_df <- df |>
+  filter(processing_speed < 2)
+
+tmp_df <- df
+
+ggplot(tmp_df, aes(x = processing_speed, y = diff)) +
+    geom_point(color = "blue", size = 3, alpha = 0.3) +
+    geom_smooth(method = "lm", se = TRUE, linetype = 2, color = "black") +
+    annotate("text", x = -0.50, y = max(tmp_df$diff) * 0.9, label = paste0("R = ", round(cor(tmp_df$processing_speed, tmp_df$diff), 2))) +
+    labs(x = "Processing Speed", y = "Antisaccade - Prosacade") +
+   #  coord_cartesian(xlim = c(100, 450), ylim = c(0, 250)) +
+    theme_minimal()
+```
+
+
+
+
+```{r}
+tmp_df <- df |>
+  filter(processing_speed < 2)
+
+tmp_df <- df
+
+ggplot(tmp_df, aes(x = processing_speed, y = anti)) +
+    geom_point(color = "blue", size = 3, alpha = 0.3) +
+    geom_smooth(method = "lm", se = TRUE, linetype = 2, color = "black") +
+    annotate("text", x = -0.50, y = max(tmp_df$anti) * 0.9, label = paste0("R = ", round(cor(tmp_df$processing_speed, tmp_df$anti), 2))) +
+    labs(x = "Processing Speed", y = "Antisaccade duration") +
+   #  coord_cartesian(xlim = c(100, 450), ylim = c(0, 250)) +
+    theme_minimal()
+
+```
+
+
+
+
+
+
