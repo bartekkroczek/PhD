@@ -1,18 +1,16 @@
-Task Description
-----------------
-Participants performed two sequential visual discrimination tasks designed to measure individual inspection time thresholds: an orientation discrimination task involving rotated squares ("Squares Task") followed by a size discrimination task involving circles ("Circles Task"). Each task comprised a training phase with fixed stimulus durations and an experimental phase employing an adaptive staircase procedure to estimate the minimal exposure duration required for reliable detection.
+Method
 
 Apparatus and Stimuli
-Participants were seated in front of a computer monitor (1920 × 1080 pixels; 60 Hz refresh rate) running PsychoPy under Python. Stimuli consisted of pairs of black shapes presented on a gray background: for the Squares Task, two filled squares (one rotated 45°) and for the Circles Task, two filled circles (one 20% larger in diameter). Stimuli appeared at equal eccentricities to the left and right of a central fixation cross. A pattern mask (same dimensions as the shapes) was presented immediately following stimulus offset.
+The experiment was conducted on a computer (1920 × 1080 pixels; 60 Hz refresh rate) running PsychoPy under Python. Stimuli were presented on a uniform gray background and comprised black geometric shapes. In the Squares Task, each trial displayed two filled squares (2° × 2° visual angle), one rotated by 45° (target) and one unrotated (foil). In the Circles Task, each trial displayed two filled circles (2° diameter), one 20% larger (target) and one smaller (foil). Stimuli appeared at 4° eccentricity to the left and right of a central fixation cross (0.5° visual angle). A pattern mask matching stimulus dimensions was presented immediately after stimulus offset for 17 frames (283 ms).
 
 Procedure
-Each trial began with a fixation cross displayed at the screen center for 45 frames (750 ms). Subsequently, the stimulus pair appeared for a variable stimulus onset asynchrony (SOA) in frames (1 frame ≈ 16.7 ms), followed by a mask presented for 17 frames (283 ms). After the mask, response cues (left and right arrow symbols flanked by a question prompt) were shown for up to 240 frames (4 s), during which participants indicated the side of the target shape (rotated square or larger circle) by pressing the corresponding arrow key. Trials concluded with a variable inter-trial interval of 45–60 frames (750–1,000 ms).
+Each trial began with a fixation cross displayed for 45 frames (750 ms), followed by a stimulus pair presented for a variable stimulus onset asynchrony (SOA; 1 frame ≈ 16.7 ms) and then the mask. Participants were prompted to indicate the target location by pressing the left or right arrow key when arrow cues were displayed for up to 240 frames (4,000 ms). The intertrial interval varied randomly between 45 and 60 frames (750–1,000 ms).
 
 Training Phase
-Prior to each task, participants viewed on-screen instructions and completed two blocks of practice trials (10 trials each) at predetermined SOAs: for the Squares Task, 12 frames (200 ms) and 6 frames (100 ms); for the Circles Task, 20 frames (333 ms) and 10 frames (167 ms). Corrective feedback (“Poprawna odpowiedź”/“Niepoprawna odpowiedź”) was provided for 30 frames (500 ms) immediately following each training trial.
+Prior to each task, participants completed two practice blocks (10 trials each) at fixed SOAs. For the Squares Task, SOAs were 12 frames (200 ms) and 6 frames (100 ms); for the Circles Task, SOAs were 20 frames (333 ms) and 10 frames (167 ms). Trial-by-trial feedback (“Poprawna odpowiedź”/“Niepoprawna odpowiedź”) was displayed for 30 frames (500 ms) following each response.
 
 Experimental Phase
-Following training, participants completed a single adaptive staircase block per task. The staircase used a 2-up/1-down rule (two consecutive correct responses increased difficulty; one incorrect response decreased difficulty), starting at 6 frames (100 ms) for the Squares Task and 10 frames (167 ms) for the Circles Task. The procedure terminated after 10 reversals. SOA values and response accuracy were recorded on each trial for subsequent threshold estimation.
+Participants then completed one adaptive staircase block per task using a 2-up/1-down rule: two consecutive correct responses decreased the SOA by one frame, and one incorrect response increased the SOA by one frame. Staircases began at 6 frames (100 ms) for the Squares Task and 10 frames (167 ms) for the Circles Task, terminating after 10 reversals. Accuracy, reaction time, and SOA were recorded on each trial.
 
-Data Recording
-Behavioral responses (accuracy, reaction time) and SOA values were logged on every trial. Threshold estimates were computed offline as the mean SOA across reversal trials within each staircase block.
+Data Analysis
+Behavioral responses (accuracy, reaction time) and trial-by-trial SOA values were logged. Inspection time thresholds were computed offline as the mean SOA across reversal trials.

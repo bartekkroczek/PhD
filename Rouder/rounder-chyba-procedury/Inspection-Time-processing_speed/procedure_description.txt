@@ -1,0 +1,97 @@
+# Inspection Time Task - Procedure Description
+
+This document provides a detailed step-by-step description of the Inspection Time task procedure implemented in main.py.
+
+## Overview
+The Inspection Time task is a psychological experiment designed to measure visual processing speed. The experiment presents visual stimuli (either squares or circles) for varying durations, followed by a mask, and participants must identify specific features of the stimuli (either an ROTATED square or a LARGER circle).
+
+## Procedure Steps
+
+### 1. Initialization
+1.1. The script imports necessary libraries (atexit, codecs, csv, random, datetime, yaml, psychopy components).
+1.2. Global variables are defined:
+   - TEXT_SIZE = 30
+   - VISUAL_OFFSET = 90
+   - KEYS = ['left', 'right']
+   - RESULTS list is initialized with column headers
+
+1.3. A CorrectStim class is defined as an enumerator with LEFT = 1 and RIGHT = 2.
+1.4. An atexit handler (save_beh_results) is registered to save results when the program exits.
+
+### 2. User Interface Setup
+2.1. A dialog box appears asking for participant information:
+   - IDENTYFIKATOR (ID)
+   - PŁEĆ (Gender): M or K
+   - WIEK (Age): default 20
+
+2.2. The script initializes a psychopy window with black background.
+2.3. The mouse cursor is made invisible.
+2.4. A unique participant ID is created by combining the entered information.
+2.5. Logging is set up to record experiment data and errors.
+2.6. Feedback text stimuli are created for correct, incorrect, and no responses.
+
+### 3. Experiment Execution
+The experiment runs through two versions sequentially: SQUARES and CIRCLES.
+For each version:
+
+3.1. Stimuli Setup:
+   - Visual stimuli are loaded from image files (LEFT.bmp, RIGHT.bmp, MASK.bmp)
+   - A fixation cross is created
+   - Question text is set based on the version:
+     - For SQUARES: "Gdzie pojawił się OBROCONY kwadrat?" (Where did the ROTATED square appear?)
+     - For CIRCLES: "Gdzie pojawił się WIĘKSZY okrąg?" (Where did the LARGER circle appear?)
+
+3.2. Configuration Loading:
+   - The script loads configuration from the corresponding YAML file (SQUARES_config.yaml or CIRCLES_config.yaml)
+   - The configurations differ mainly in:
+     - TRAINING_SOAS: [12, 6] for SQUARES vs [20, 10] for CIRCLES
+     - START_SOA: 6 for SQUARES vs 10 for CIRCLES
+     - Both share common settings for fixation time, mask time, response time, etc.
+
+3.3. Training Phase:
+   - Information screen is displayed with instructions
+   - Training trials are run according to the configuration:
+     - SQUARES: 10 trials with SOA=12 frames, followed by 10 trials with SOA=6 frames
+     - CIRCLES: 10 trials with SOA=20 frames, followed by 10 trials with SOA=10 frames
+   - For each trial:
+     - A fixation cross is displayed for FIX_TIME frames (45)
+     - A stimulus (left or right, randomly chosen) is displayed for the specified SOA frames
+     - A mask is displayed for MTIME frames (17)
+     - The participant has RTIME frames (240) to respond by pressing left or right arrow key
+     - Feedback is provided (correct/incorrect/no response)
+     - A short break occurs between trials (random duration between 45-60 frames ÷ 60 seconds)
+
+3.4. Experimental Phase:
+   - Information screen is displayed with instructions
+   - An adaptive staircase procedure (NUpNDown) is used to adjust the SOA:
+     - Starting value: 6 frames for SQUARES, 10 frames for CIRCLES
+     - N_UP = 2: SOA decreases after 2 consecutive correct responses
+     - N_DOWN = 1: SOA increases after 1 incorrect response
+     - The procedure continues until MAX_REVS (10) reversals occur
+   - For each trial:
+     - The procedure is the same as in training, but without feedback
+     - The SOA is adjusted based on the participant's performance
+     - Results are recorded, including trial number, stimulus type, SOA, correctness, response time, etc.
+     - A short break occurs between trials (random duration between 45-60 frames ÷ 60 seconds)
+
+### 4. Trial Execution (run_trial function)
+Each trial follows these steps:
+4.1. Randomly select whether the target stimulus will appear on the left or right
+4.2. Display fixation cross for FIX_TIME frames (45)
+4.3. Display the stimulus (left or right) for the current SOA frames
+4.4. Display the mask for MTIME frames (17)
+4.5. Wait for participant response for up to RTIME frames (240)
+4.6. Record whether the response was correct and the response time
+4.7. Return to the main procedure
+
+### 5. Completion
+5.1. All results are saved to a CSV file in the 'results' folder
+5.2. A completion message is displayed
+5.3. The window is closed, ending the experiment
+
+## Technical Details
+- Frame rate: 60 Hz (assumed)
+- Screen resolution: 1920x1080 pixels
+- All timing values in the configuration files are specified in frames
+- The adaptive algorithm uses a 2-up 1-down staircase procedure
+- Results are saved in CSV format with detailed information about each trial

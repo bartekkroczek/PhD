@@ -162,8 +162,8 @@ temporal_order <- temporal_order |>
   pivot_wider(
     names_from = Stimuli,
     values_from = mean_soa,
-    names_prefix = "temporal_") |> 
-  filter(temporal_CIRCLES < 10 & temporal_SQUARES < 10)
+    names_prefix = "temporal_") |>  
+filter(temporal_CIRCLES < 10 & temporal_SQUARES < 10)
 ```
 
 ```{r}
@@ -213,6 +213,7 @@ df_numeric <- processing_speed |> select(-PART_ID)
 
 # 1. Correlation matrix
 corr_matrix <- cor(df_numeric)
+print(corr_matrix)
 corrplot(corr_matrix, method = "number")
 
 # 2. KMO and Bartlett's Test (sampling adequacy)
@@ -244,6 +245,22 @@ model <- '
 
 # Fit the CFA model
 fit <- cfa(model, data = processing_speed)
+
+
+
+# Extract fit indices for reporting
+fit_indices <- fitMeasures(fit, c("cfi", "rmsea", "rmsea.ci.lower", "rmsea.ci.upper"))
+
+
+# Print fit indices for easy reporting
+cat("Model fit:\n")
+cat(sprintf("CFI = %.3f, RMSEA = %.3f [90%% CI: %.3f, %.3f]\n", 
+            fit_indices["cfi"], 
+            fit_indices["rmsea"], 
+            fit_indices["rmsea.ci.lower"], 
+            fit_indices["rmsea.ci.upper"]))
+
+
 
 # Extract factor scores
 factor_scores <- lavaan::predict(fit)

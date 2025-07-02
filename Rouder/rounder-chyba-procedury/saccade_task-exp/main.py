@@ -323,7 +323,7 @@ def run_trial(win: visual.Window, conf: dict, block_type: str, fix_cross, csi: i
     win.callOnFlip(clock.reset)
     event.clearEvents()
 
-    for _ in range(stim_time):
+    for _ in range(stim_time * 1000):
         stim.draw()
         win.flip()
 

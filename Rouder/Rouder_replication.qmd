@@ -1,0 +1,115 @@
+---
+title: "Rouder_replication"
+format: html
+---
+
+```{r}
+# Load libraries
+library(tidyverse)
+library(fs)
+library(patchwork)
+library(lavaan)
+library(ggplot2)
+library(psych)
+library(corrplot)
+```
+
+# Data loading
+
+```{r}
+saccades <- dir_ls("data/anti-pro-saccade/beh", glob = "*.csv")
+
+saccades <- saccades %>%
+  map_df(read_csv, col_types = cols(
+    Block_no = col_integer(),
+    Block_type = col_character(),
+    Trial_no = col_integer(),
+    CSI = col_integer(),
+    Level = col_integer(),
+    Reversal = col_integer(),
+    Revs_count = col_integer()
+  ))
+glimpse(saccades)
+```
+
+```{r}
+temporal_order <- dir_ls("data/Temporal-order/beh", glob = "*.csv")
+inspection_time <- dir_ls("data/Inspection-Time/beh", glob = "*.csv")
+
+temporal_order <- temporal_order |>
+  map_df(read_csv, col_types = cols(
+    Reversal = col_integer(),
+    Reversal_count = col_integer()
+  ))
+
+inspection_time <- inspection_time |>
+  map_df(read_csv, col_types = cols(
+    Reversal = col_integer(),
+    Reversal_count = col_integer()
+  ))
+glimpse(temporal_order)
+```
+
+# Preprocessing
+
+## 13 wyleciało za średni stimulus time w co najmniej jednym bloku powyżej 1000 ms.
+
+```{r}
+# Participants with too long blocks in saccades
+
+too_long_stimtimes <- saccades |>
+  group_by(PART_ID, Block_no) |>
+  summarise(
+    max_stim_time = 16.67 * max(`Stimulus Time`) 
+  ) |>
+  filter(max_stim_time > 1000) |>
+  group_by(PART_ID) |>
+  summarise(too_long_blocks = n())
+
+too_long_stimtimes
+
+too_long_stimtimes <- unique(too_long_stimtimes$PART_ID)
+
+saccades <- saccades |>
+  filter(!PART_ID %in% too_long_stimtimes) 
+```
+
+## 11 wyleciało za ujemny kontrast, czyli średni czas (dla całego eksperymentu) w blokach pro wyższy, niż w blokach anti. 
+
+
+```{r}
+# Participants with negative contrast in saccades
+saccades_contrast <- saccades |>
+  group_by(PART_ID) |>
+  summarise(
+    pro_mean = mean(`Stimulus Time`[Block_type == "PS"]),
+    anti_mean = mean(`Stimulus Time`[Block_type == "AS"]),
+    contrast = pro_mean - anti_mean
+  ) |>
+  filter(contrast > 0)
+saccades_contrast
+```
+
+
+
+```{r}
+clean_data <- raw_data |>
+  filter(!PART_ID %in% too_long_stimtimes$PART_ID) |>
+  filter(PART_ID != "Y2-S2-205K20") |> # Uncomplete processing spead measure
+  filter(Revs_count >= meaningful_revs_count & Reversal == 1) |> # Stim times only for reversal trials
+  select(PART_ID, Block_no, Block_type, `Stimulus Time`, Revs_count) |>
+  group_by(PART_ID, Block_no) |>
+  summarise(duration_ms = mean(`Stimulus Time`)  * (1000 / 60), 
+            Block_type = first(Block_type), 
+            # .groups = "drop") 
+```
+
+
+1. Preprocessing 
+
+W analizę wchodzi 174 z 202 zmierzonych osób. (14% odrzutu, przyzwoicie)
+
+
+3 osoby wyleciały za bardzo wolne czasy (powyżej 200 ms) w inspection time i temporal order 
+1 osoba wyleciała, bo ma niedokończony pomiar jednej z miar processing speed 
+

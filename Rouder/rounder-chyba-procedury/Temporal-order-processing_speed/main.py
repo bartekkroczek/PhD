@@ -108,7 +108,7 @@ def main():
         abort_with_error('Info dialog terminated.')
 
     # === Scene init ===
-    win = visual.Window(SCREEN_RES, fullscr=True, monitor='testMonitor', units='pix', screen=0, color='black')
+    win = visual.Window(SCREEN_RES, fullscr=False, monitor='testMonitor', units='pix', screen=0, color='black')
     event.Mouse(visible=False, newPos=None, win=win)  # Make mouse invisible
     FRAME_RATE = 60
     PART_ID = info['IDENTYFIKATOR'] + info[u'P\u0141EC'] + info['WIEK']

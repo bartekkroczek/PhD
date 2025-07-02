@@ -153,11 +153,11 @@ head(block_for_factors)
 
 ```{r}
 # Extract just the numeric variables for analysis
-df_numeric <- block_for_factors |> select(starts_with("AS_"))
+df_numeric <- block_for_factors |> select(starts_with("PS_"))
 
 # 1. Correlation matrix
 corr_matrix <- cor(df_numeric)
-corrplot(corr_matrix, method = "number")
+print(corr_matrix)
 
 # 2. KMO and Bartlett's Test (sampling adequacy)
 KMO(df_numeric)
@@ -186,18 +186,32 @@ ps_model <- '
   pro ~~ 1*pro
 '
 
-# Fit the CFA model
+# Fit the CFA models
 fit_as <- cfa(as_model, data = block_for_factors)
 fit_ps <- cfa(ps_model, data = block_for_factors)
+
+# Extract fit indices for reporting
+fit_indices_as <- fitMeasures(fit_as, c("cfi", "rmsea", "rmsea.ci.lower", "rmsea.ci.upper"))
+fit_indices_ps <- fitMeasures(fit_ps, c("cfi", "rmsea", "rmsea.ci.lower", "rmsea.ci.upper"))
+
+# Print fit indices for easy reporting
+cat("Anti-saccade model fit:\n")
+cat(sprintf("CFI = %.3f, RMSEA = %.3f [90%% CI: %.3f, %.3f]\n", 
+            fit_indices_as["cfi"], 
+            fit_indices_as["rmsea"], 
+            fit_indices_as["rmsea.ci.lower"], 
+            fit_indices_as["rmsea.ci.upper"]))
+
+cat("\nPro-saccade model fit:\n")
+cat(sprintf("CFI = %.3f, RMSEA = %.3f [90%% CI: %.3f, %.3f]\n", 
+            fit_indices_ps["cfi"], 
+            fit_indices_ps["rmsea"], 
+            fit_indices_ps["rmsea.ci.lower"], 
+            fit_indices_ps["rmsea.ci.upper"]))
 
 # Extract factor scores
 factor_scores_as <- lavaan::predict(fit_as)
 factor_scores_ps <- lavaan::predict(fit_ps)
-
-# # Scale factor scores to 0-1 range using min-max normalization
-# min_score <- min(factor_scores)
-# max_score <- max(factor_scores)
-# normalized_scores <- (factor_scores - min_score) / (max_score - min_score)
 
 # Create result dataframe
 mean_by_type <- data.frame(
@@ -206,9 +220,6 @@ mean_by_type <- data.frame(
   pro = factor_scores_ps
 ) |>
   mutate(diff = anti - pro)
-
-# Display the result
-print(mean_by_type)
 ```
 
 ```{r}
@@ -249,6 +260,7 @@ inspection_time <- inspection_time |>
 
 ```{r}
 temporal_order <- temporal_order |>
+  filter(PART_ID %in% legal_ids) |>
   filter(Reversal == 1 & Reversal_count > meaningful_revs_count & Training == "exp") |>
   group_by(PART_ID, Stimuli) |>
   summarize(mean_soa = mean(SOA), .groups = "drop") |>
@@ -256,7 +268,7 @@ temporal_order <- temporal_order |>
     names_from = Stimuli,
     values_from = mean_soa,
     names_prefix = "temporal_") |> 
-  filter(temporal_CIRCLES < 10 & temporal_SQUARES < 10)
+  filter(temporal_CIRCLES > 10 & temporal_SQUARES < 10)
 ```
 
 ```{r}
@@ -308,7 +320,7 @@ df_numeric <- processing_speed |> select(-PART_ID)
 
 # 1. Correlation matrix
 corr_matrix <- cor(df_numeric)
-corrplot(corr_matrix, method = "number")
+print(corr_matrix)
 
 # 2. KMO and Bartlett's Test (sampling adequacy)
 KMO(df_numeric)
@@ -341,6 +353,18 @@ model <- '
 # Fit the CFA model
 fit <- cfa(model, data = processing_speed)
 
+# Extract fit indices for reporting
+fit_indices <- fitMeasures(fit, c("cfi", "rmsea", "rmsea.ci.lower", "rmsea.ci.upper"))
+
+
+# Print fit indices for easy reporting
+cat("Model fit:\n")
+cat(sprintf("CFI = %.3f, RMSEA = %.3f [90%% CI: %.3f, %.3f]\n", 
+            fit_indices["cfi"], 
+            fit_indices["rmsea"], 
+            fit_indices["rmsea.ci.lower"], 
+            fit_indices["rmsea.ci.upper"]))
+
 # Extract factor scores
 factor_scores <- lavaan::predict(fit)
 
@@ -355,8 +379,6 @@ processing_speed_df <- data.frame(
   processing_speed = factor_scores
 )
 
-# Display the result
-print(processing_speed_df)
 ```
 
 ```{r}
