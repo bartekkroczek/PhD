@@ -30,10 +30,34 @@ library(BayesFactor)
 #| label: load-data
 #| include: false
 
-data.names <-
+data.names <- 
   list.files('../Data_Full/', full.names = T, pattern = '*.csv$')
 data.files <- read_csv(data.names)
 ```
+## DEMOGRAPHICS
+```{r}
+
+demographics <- data.names |>
+  str_extract("[^/]+$") |>
+  str_remove("_.*$") |>
+  str_sub(-4)
+
+# keep only entries that match <digits><letter><digits>
+mask <- grepl("^[0-9]+[A-Za-z][0-9]+$", demographics)
+
+# extract the middle letter
+sex <- sub("^[0-9]+([A-Za-z])[0-9]+$", "\\1", demographics[mask])
+
+# extract the number after the letter (the “second number”)
+age <- as.integer(sub("^[0-9]+[A-Za-z]([0-9]+)$", "\\1", demographics[mask]))
+```
+
+```{r}
+table(sex)
+summary(age)
+sd(age)
+```
+
 
 ```{r}
 #| include: false

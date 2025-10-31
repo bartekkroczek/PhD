@@ -1,0 +1,560 @@
+---
+title: "trend_backup"
+format: html
+---
+
+
+```{r}
+# Minimal, decision-focused rejection of LM usefulness across participants
+# - Primary criterion: k-fold CV shows GAM beats LM on RMSE across participants
+# - Secondary (diagnostic) check: Ramsey RESET for mean-structure misspecification
+# References:
+#   Ramsey (1969) JRSS B (RESET test); Wood (2017) Generalized Additive Models 2e.
+
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(mgcv)       # GAM
+  library(lmtest)     # resettest
+})
+
+reject_linear_models <- function(fits_tbl,
+                                 K = 5,
+                                 seed = 123,
+                                 alpha = 0.05,
+                                 rel_improve_threshold = 0.05,  # median relative RMSE improvement needed (5%)
+                                 min_prop_better = 0.60         # at least 60% of participants improved
+) {
+  stopifnot("fit" %in% names(fits_tbl))
+  if (!("id" %in% names(fits_tbl))) {
+    fits_tbl <- fits_tbl %>% mutate(id = row_number())
+  }
+
+  set.seed(seed)
+
+  # Build a GAM formula from a model.frame: smooth all numeric predictors, keep factors linear
+  build_gam_formula_from_df <- function(df, resp_col) {
+    preds <- setdiff(names(df), resp_col)
+    if (length(preds) == 0L) {
+      return(stats::as.formula(paste(resp_col, "~ 1")))
+    }
+    is_num <- vapply(df[preds], is.numeric, logical(1))
+    num_terms <- preds[is_num]
+    fac_terms <- preds[!is_num]
+    rhs_terms <- c(if (length(num_terms)) paste0("s(", num_terms, ", bs='tp')"),
+                   if (length(fac_terms)) fac_terms)
+    stats::as.formula(paste(resp_col, "~", paste(rhs_terms, collapse = " + ")))
+  }
+
+  # Assign K folds (fall back to LOOCV for small n); ensure at least 2 obs in test where possible
+  make_folds <- function(n, K) {
+    K_eff <- min(K, n)
+    sample(rep(seq_len(K_eff), length.out = n))
+  }
+
+  # Per-participant CV with LM vs GAM (and Null baseline)
+  eval_one <- function(fit, id) {
+    mf <- stats::model.frame(fit)
+    resp <- all.vars(stats::formula(fit))[1]
+    y <- mf[[resp]]
+    n <- nrow(mf)
+
+    # Clean copy for GAM with syntactically valid names
+    df_gam <- mf
+    names(df_gam) <- make.names(names(df_gam), unique = TRUE)
+    resp_clean <- names(df_gam)[match(resp, names(mf))]
+
+    # Formulas
+    gam_formula <- build_gam_formula_from_df(df_gam, resp_clean)
+    lm_formula  <- stats::formula(fit)
+
+    # Folds
+    folds <- make_folds(n, K)
+
+    # Accumulators
+    se_lm <- se_gam <- se_null <- numeric(0L)
+
+    for (k in unique(folds)) {
+      test_idx  <- which(folds == k)
+      train_idx <- setdiff(seq_len(n), test_idx)
+      # Guard against tiny train sets
+      if (length(train_idx) < 5L || length(test_idx) < 1L) next
+
+      # LM refit and predict
+      fit_lm_k <- tryCatch(stats::lm(lm_formula, data = mf[train_idx, , drop = FALSE]),
+                           error = function(e) NULL)
+      pred_lm  <- if (is.null(fit_lm_k)) rep(NA_real_, length(test_idx))
+                  else tryCatch(stats::predict(fit_lm_k, newdata = mf[test_idx, , drop = FALSE]),
+                                error = function(e) rep(NA_real_, length(test_idx)))
+
+      # GAM fit and predict
+      fit_gam_k <- tryCatch(mgcv::gam(gam_formula,
+                                      data = df_gam[train_idx, , drop = FALSE],
+                                      method = "REML"),
+                            error = function(e) NULL)
+      pred_gam  <- if (is.null(fit_gam_k)) rep(NA_real_, length(test_idx))
+                   else tryCatch(stats::predict(fit_gam_k, newdata = df_gam[test_idx, , drop = FALSE],
+                                                type = "response"),
+                                 error = function(e) rep(NA_real_, length(test_idx)))
+
+      # Null (intercept-only) baseline
+      fit_null_k <- tryCatch(stats::lm(mf[[resp]][train_idx] ~ 1),
+                             error = function(e) NULL)
+      pred_null  <- if (is.null(fit_null_k)) rep(mean(y[train_idx]), length(test_idx))
+                    else tryCatch(stats::predict(fit_null_k,
+                                                 newdata = mf[test_idx, , drop = FALSE]),
+                                  error = function(e) rep(mean(y[train_idx]), length(test_idx)))
+
+      y_test <- y[test_idx]
+
+      se_lm   <- c(se_lm,   (y_test - pred_lm)^2)
+      se_gam  <- c(se_gam,  (y_test - pred_gam)^2)
+      se_null <- c(se_null, (y_test - pred_null)^2)
+    }
+
+    rmse <- function(se) if (length(se) > 0 && all(is.finite(se))) sqrt(mean(se)) else NA_real_
+
+    rmse_lm   <- rmse(se_lm)
+    rmse_gam  <- rmse(se_gam)
+    rmse_null <- rmse(se_null)
+
+    rel_gain_lm_vs_null <- if (is.finite(rmse_null) && rmse_null > 0 && is.finite(rmse_lm))
+                             (rmse_null - rmse_lm) / rmse_null else NA_real_
+
+    rel_gain_gam_vs_lm <- if (is.finite(rmse_lm) && rmse_lm > 0 && is.finite(rmse_gam))
+                            (rmse_lm - rmse_gam) / rmse_lm else NA_real_
+
+    # Ramsey RESET on the original fit (diagnostic only)
+    reset_p <- tryCatch(lmtest::resettest(fit, power = 2:3, type = "regressor")$p.value,
+                        error = function(e) NA_real_)
+
+    tibble::tibble(
+      id = id,
+      n = n,
+      rmse_lm = rmse_lm,
+      rmse_gam = rmse_gam,
+      rmse_null = rmse_null,
+      rel_gain_lm_vs_null = rel_gain_lm_vs_null,
+      rel_gain_gam_vs_lm = rel_gain_gam_vs_lm,
+      reset_p = reset_p
+    )
+  }
+
+  # Run all participants
+  results <- purrr::map2_dfr(fits_tbl$fit, fits_tbl$id, eval_one)
+
+  # Aggregate decision statistics
+  deltas <- results %>%
+    mutate(delta_rmse = rmse_lm - rmse_gam,
+           gam_better = delta_rmse > 0)
+
+  # Paired across-participant test: is RMSE_LM - RMSE_GAM > 0 on average?
+  deltas_valid <- deltas %>% filter(is.finite(delta_rmse))
+  wilcox_p <- if (nrow(deltas_valid) > 0)
+                stats::wilcox.test(deltas_valid$delta_rmse,
+                                   alternative = "greater",
+                                   exact = FALSE)$p.value
+              else NA_real_
+
+  median_rel_improve <- deltas %>%
+    summarise(med = stats::median(rel_gain_gam_vs_lm, na.rm = TRUE)) %>% pull(med)
+
+  prop_better <- mean(deltas$gam_better, na.rm = TRUE)
+
+  reset_bh <- stats::p.adjust(results$reset_p, method = "BH")
+  reset_flag_prop <- mean(reset_bh < alpha, na.rm = TRUE)
+
+  # Decision rule (adjust thresholds as needed)
+  global_reject <- is.finite(wilcox_p) && (wilcox_p < alpha) &&
+                   is.finite(median_rel_improve) && (median_rel_improve >= rel_improve_threshold) &&
+                   is.finite(prop_better) && (prop_better >= min_prop_better)
+
+  # Print concise summary
+  cat("Decision-focused LM Usefulness Check\n")
+  cat("=====================================\n")
+  cat("Participants:", nrow(results), "\n")
+  cat("Median relative RMSE improvement (GAM vs LM):",
+      sprintf("%0.1f%%", 100 * median_rel_improve %||% NA_real_), "\n")
+  cat("GAM better than LM (by RMSE):",
+      sprintf("%0.1f%%", 100 * (prop_better %||% NA_real_)), "\n")
+  cat("Wilcoxon signed-rank p-value (delta RMSE > 0):",
+      sprintf("%.3g", wilcox_p %||% NA_real_), "\n")
+  cat("RESET rejects after BH (alpha =", alpha, "):",
+      sprintf("%0.1f%%", 100 * (reset_flag_prop %||% NA_real_)), "\n")
+  cat("Thresholds: median improvement >=", 100*rel_improve_threshold, "%,",
+      "prop better >=", 100*min_prop_better, "%, p <", alpha, "\n")
+  cat("Conclusion: Reject LM usefulness across participants =", global_reject, "\n")
+
+  list(
+    decision = global_reject,
+    summary = tibble::tibble(
+      n_participants = nrow(results),
+      median_rel_improve = median_rel_improve,
+      prop_better = prop_better,
+      wilcox_p = wilcox_p,
+      reset_prop_reject_bh = reset_flag_prop,
+      alpha = alpha,
+      rel_improve_threshold = rel_improve_threshold,
+      min_prop_better = min_prop_better
+    ),
+    per_participant = results %>% mutate(reset_p_bh = reset_bh)
+  )
+}
+
+# Usage:
+out <- reject_linear_models(fits_tbl, K = 5, seed = 123, alpha = 0.05,
+                            rel_improve_threshold = 0.05, min_prop_better = 0.60)
+out$decision  # TRUE means: reject LM usefulness across participants
+out$summary
+head(out$per_participant)
+```
+
+
+
+```{r}
+
+library(tidyverse)
+library(nortest)     # ad.test
+library(e1071)       # skewness, kurtosis
+# Optional: library(fBasics)  # if you later want DP in the omnibus
+
+# Parametric-bootstrap normality check for a panel of lm fits
+check_normality <- function(fits_tbl,
+                            alpha = 0.05,
+                            B = 1000,                # bootstrap replicates
+                            stat = c("AD", "SW", "Cauchy"),  # test statistic
+                            include_dp = FALSE,      # only used if stat == "Cauchy"
+                            seed = NULL) {
+
+  stat <- match.arg(stat)
+
+  # Cauchy p-value combination (robust to dependence)
+  pcauchy_combine <- function(ps) {
+    ps <- ps[is.finite(ps) & !is.na(ps)]
+    if (length(ps) == 0) return(NA_real_)
+    t_stat <- mean(tan((0.5 - ps) * pi))
+    1 - pcauchy(t_stat)
+  }
+
+  # Compute the chosen test statistic on residuals (externally studentized)
+  get_stat <- function(resid, stat) {
+    n <- length(resid)
+    if (stat == "AD") {
+      if (n < 8) return(NA_real_)  # AD is unstable for very small n
+      out <- tryCatch(nortest::ad.test(resid), error = function(e) NULL)
+      if (is.null(out)) return(NA_real_)
+      return(unname(out$statistic))  # larger => less normal
+    } else if (stat == "SW") {
+      if (n < 3 || n > 5000) return(NA_real_)
+      out <- tryCatch(shapiro.test(resid), error = function(e) NULL)
+      if (is.null(out)) return(NA_real_)
+      return(unname(out$statistic))  # smaller => less normal
+    } else if (stat == "Cauchy") {
+      # Combine SW (+ optionally AD and/or DP) p-values, then return S = -log10(p_combined)
+      ps <- c(
+        if (n >= 3 && n <= 5000) tryCatch(shapiro.test(resid)$p.value, error = function(e) NA_real_) else NA_real_,
+        tryCatch(nortest::ad.test(resid)$p.value, error = function(e) NA_real_)  # AD p
+        # If you really want DP, uncomment the next lines (slower, may error for small n)
+        # , if (include_dp && n >= 8) {
+        #     out <- tryCatch(suppressWarnings(fBasics::dagoTest(as.numeric(resid))), error = function(e) NULL)
+        #     if (is.null(out)) NA_real_ else as.numeric(out@test$"p.value"[nrow(out@test)])
+        #   } else NA_real_
+      )
+      p_comb <- pcauchy_combine(ps)
+      if (!is.finite(p_comb) || is.na(p_comb)) return(NA_real_)
+      return(-log10(max(p_comb, .Machine$double.xmin)))  # larger => less normal
+    }
+    NA_real_
+  }
+
+  # Direction for bootstrap tail
+  larger_is_more_extreme <- switch(stat,
+                                   "AD" = TRUE,
+                                   "SW" = FALSE,
+                                   "Cauchy" = TRUE)
+
+  # Per-fit bootstrap
+  boot_one <- function(fit, B, stat, seed = NULL) {
+    # Observed residuals and statistic
+    resid_obs <- as.numeric(stats::rstudent(fit))
+    n <- length(resid_obs)
+    t_obs <- get_stat(resid_obs, stat)
+
+    # If we cannot compute the stat, bail out
+    if (!is.finite(t_obs) || is.na(t_obs) || B <= 0) {
+      return(list(n = n, t_obs = NA_real_, p_boot = NA_real_,
+                  skew = NA_real_, excess_kurt = NA_real_))
+    }
+
+    # Prepare model frame and response name for refits
+    mf <- stats::model.frame(fit)
+    resp <- all.vars(stats::formula(fit))[1]
+
+    # Generate bootstrap responses under the fitted lm
+    if (!is.null(seed)) set.seed(seed)
+    y_sims <- stats::simulate(fit, nsim = B)  # data.frame with B columns
+
+    # Compute bootstrap statistics
+    t_boot <- numeric(B)
+    for (b in seq_len(B)) {
+      mf[[resp]] <- y_sims[[b]]
+      fit_b <- suppressWarnings(stats::lm(stats::formula(fit), data = mf))
+      resid_b <- as.numeric(stats::rstudent(fit_b))
+      t_boot[b] <- get_stat(resid_b, stat)
+    }
+    t_boot <- t_boot[is.finite(t_boot) & !is.na(t_boot)]
+    if (length(t_boot) == 0) {
+      p_boot <- NA_real_
+    } else if (larger_is_more_extreme) {
+      p_boot <- mean(t_boot >= t_obs)
+    } else {
+      p_boot <- mean(t_boot <= t_obs)
+    }
+
+    # Effect sizes on observed residuals (descriptive)
+    skew <- tryCatch(e1071::skewness(resid_obs, type = 2), error = function(e) NA_real_)
+    excess_kurt <- tryCatch(e1071::kurtosis(resid_obs, type = 2) - 3, error = function(e) NA_real_)
+
+    list(n = n, t_obs = t_obs, p_boot = p_boot,
+         skew = skew, excess_kurt = excess_kurt)
+  }
+
+  # Run per participant
+  if (!("fit" %in% names(fits_tbl))) stop("fits_tbl must contain a column `fit` with lm objects.")
+  if (!("id" %in% names(fits_tbl))) fits_tbl <- fits_tbl %>% mutate(id = row_number())
+
+  # Make per-row seed for reproducibility without synchronizing streams
+  base_seed <- if (is.null(seed)) sample.int(.Machine$integer.max, 1) else as.integer(seed)
+  seeds <- base_seed + seq_len(nrow(fits_tbl))
+
+  detailed_results <- fits_tbl %>%
+    mutate(
+      boot = map2(fit, seeds, ~ boot_one(.x, B = B, stat = stat, seed = .y)),
+      n = map_int(boot, "n"),
+      t_obs = map_dbl(boot, "t_obs"),
+      p_boot = map_dbl(boot, "p_boot"),
+      skew = map_dbl(boot, "skew"),
+      excess_kurt = map_dbl(boot, "excess_kurt")
+    ) %>%
+    mutate(
+      p_boot_bh = p.adjust(p_boot, method = "BH"),
+      pass = p_boot > alpha  # "passes normality" if bootstrap p > alpha
+    ) %>%
+    select(id, n, t_obs, p_boot, p_boot_bh, pass, skew, excess_kurt)
+
+  # Summary
+  summary_results <- detailed_results %>%
+    summarise(
+      total_models = n(),
+      denom = sum(!is.na(p_boot)),
+      pass_n = sum(pass, na.rm = TRUE),
+      pass_pct = round(100 * pass_n / pmax(denom, 1), 1),
+      median_abs_skew = round(median(abs(skew), na.rm = TRUE), 3),
+      median_abs_excess_kurt = round(median(abs(excess_kurt), na.rm = TRUE), 3)
+    ) %>%
+    mutate(
+      method = paste0("Parametric bootstrap (B=", B, "), stat=", stat)
+    )
+
+  cat("Parametric Bootstrap Normality Summary (alpha =", alpha, ")\n")
+  cat("=========================================================\n")
+  cat("Total models:", summary_results$total_models, " (with valid p:", summary_results$denom, ")\n")
+  cat("Pass rate (%):", summary_results$pass_pct, "\n")
+  cat("Effect size medians: |skew|=", summary_results$median_abs_skew,
+      ", |excess kurtosis|=", summary_results$median_abs_excess_kurt, "\n")
+  cat("Statistic:", summary_results$method, "\n")
+
+  list(detailed_results = detailed_results,
+       summary = summary_results)
+}
+
+# Example run:
+results <- check_normality(fits_tbl, alpha = 0.05, B = 1000, stat = "AD", seed = 123)
+
+
+```
+
+
+### Legacy Formal tests 
+
+```{r}
+# ---- packages ----
+library(dplyr)
+library(purrr)
+library(tidyr)
+library(ggplot2)
+library(tibble)
+library(broom)
+library(lmtest)
+library(nortest)
+
+# --------------------------------------------------------------------
+# 0) Prepare outcome (Fisher z if mean_corr is a correlation in [-1,1])
+#    Assumes data.aggr has columns: PART_ID, t, mean_corr
+# --------------------------------------------------------------------
+data.aggr <- data.aggr %>%
+  mutate(y_z = atanh(pmin(pmax(mean_corr, -0.999), 0.999)))  # Fisher z
+
+# --------------------------------------------------------------------
+# 1) Fit per-participant linear models
+# --------------------------------------------------------------------
+fits_tbl <- data.aggr %>%
+  group_by(PART_ID) %>%
+  do(model = lm(y_z ~ t, data = .)) %>%
+  ungroup() %>%
+  rename(fit = model, id = PART_ID)
+
+# helper: studentized residuals with fallback
+# safe wrappers for tests (return NA on failure)
+safe_ad_p <- function(r) {
+  r <- r[is.finite(r)]
+  if (length(r) < 8) return(NA_real_)
+  suppressWarnings(tryCatch(nortest::ad.test(r)$p.value, error = function(e) NA_real_))
+}
+
+safe_bp_p <- function(f) {
+  if (!inherits(f, "lm") || df.residual(f) < 3) return(NA_real_)
+  suppressWarnings(tryCatch(lmtest::bptest(f)$p.value, error = function(e) NA_real_))
+}
+
+safe_reset_p <- function(f) {
+  if (!inherits(f, "lm") || df.residual(f) < 5) return(NA_real_)
+  suppressWarnings(tryCatch(lmtest::resettest(f, power = 2:3)$p.value, error = function(e) NA_real_))
+}
+
+safe_dw_p <- function(f) {
+  if (!inherits(f, "lm") || df.residual(f) < 3) return(NA_real_)
+  suppressWarnings(tryCatch(lmtest::dwtest(f)$p.value, error = function(e) NA_real_))
+}
+
+get_rstud <- function(fit) suppressWarnings(tryCatch(rstudent(fit), error = function(e) rstandard(fit)))
+
+# sample size (usable residuals) per id
+sizes_tbl <- fits_tbl %>%
+  transmute(id, n0 = map_int(fit, ~ sum(is.finite(get_rstud(.x)))))
+
+# --------------------------------------------------------------------
+# 2) Worms for each participant on a common z-grid
+# --------------------------------------------------------------------
+q_grid <- seq(0.02, 0.98, length.out = 97)
+z_grid <- qnorm(q_grid)
+
+worm_from_fit <- function(fit, id, z_grid) {
+  if (!inherits(fit, "lm")) return(NULL)
+  r <- get_rstud(fit)
+  r <- r[is.finite(r)]
+  n <- length(r)
+  if (n < 8) return(NULL)                       # too small for a stable worm
+  r_ord <- sort(r)
+  z <- qnorm(ppoints(n))
+  d <- r_ord - z                                # detrended QQ deviation
+  d_grid <- approx(x = z, y = d, xout = z_grid, rule = 2)$y
+  tibble(z = z_grid, d = d_grid)
+}
+
+worms_grid <- fits_tbl %>%
+  rowwise() %>%
+  mutate(worm = list(worm_from_fit(fit, id, z_grid))) %>%
+  ungroup() %>%
+  filter(!purrr::map_lgl(worm, is.null)) %>%
+  unnest(worm)
+
+# --------------------------------------------------------------------
+# 3) Participant-level scalar worm metrics
+# --------------------------------------------------------------------
+worm_scores <- worms_grid %>%
+  group_by(id) %>%
+  summarise(
+    L2  = mean(d^2, na.rm = TRUE),          # average squared deviation
+    SUP = max(abs(d), na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  left_join(sizes_tbl, by = "id")
+
+# --------------------------------------------------------------------
+# 4) Null calibration by simulation (size-aware thresholds)
+# --------------------------------------------------------------------
+simulate_worm_thresholds <- function(n, z_grid, B = 2000L, seed = 1L) {
+  set.seed(seed + n)
+  # vectorized replicate
+  L2b  <- numeric(B)
+  SUPb <- numeric(B)
+  for (b in seq_len(B)) {
+    r <- rnorm(n)
+    r <- sort(r)
+    z <- qnorm(ppoints(n))
+    d <- r - z
+    d_grid <- approx(x = z, y = d, xout = z_grid, rule = 2)$y
+    L2b[b]  <- mean(d_grid^2)
+    SUPb[b] <- max(abs(d_grid))
+  }
+  c(L2_95 = unname(quantile(L2b, 0.95)),
+    SUP_95 = unname(quantile(SUPb, 0.95)))
+}
+
+thresh_tbl <- unique(worm_scores$n0)
+thresh_tbl <- tibble(n0 = thresh_tbl[is.finite(thresh_tbl)]) %>%
+  mutate(th = map(n0, ~ simulate_worm_thresholds(.x, z_grid = z_grid, B = 2000))) %>%
+  unnest_wider(th)
+
+worm_scores <- worm_scores %>%
+  left_join(thresh_tbl, by = "n0") %>%
+  mutate(
+    fail_sup = SUP > SUP_95,
+    fail_l2  = L2  > L2_95
+  )
+
+# --------------------------------------------------------------------
+# 5) Classical diagnostics with BH multiplicity control
+# --------------------------------------------------------------------
+diag_tbl <- fits_tbl %>%
+  mutate(
+    n      = map_int(fit, nobs),
+    rstud  = map(fit, get_rstud),
+    ad_p   = map_dbl(rstud, safe_ad_p),                 # Normality/shape
+    bp_p   = map_dbl(fit,   safe_bp_p),                   # Heteroskedasticity
+    reset_p= map_dbl(fit,   safe_reset_p),   # Functional form
+    dw_p   = map_dbl(fit,   safe_dw_p)                    # Serial correlation (if t is time)
+  ) %>%
+  transmute(
+    id,
+    n,
+    ad_p, bp_p, reset_p, dw_p
+  ) %>%
+  mutate(
+    ad_q    = p.adjust(ad_p, method = "BH"),
+    bp_q    = p.adjust(bp_p, method = "BH"),
+    reset_q = p.adjust(reset_p, method = "BH"),
+    dw_q    = p.adjust(dw_p, method = "BH")
+  )
+
+# --------------------------------------------------------------------
+# 6) Combine to a single decision per model
+#     "Good" if all adjusted tests are non-significant at 0.10
+#     and worm metrics are within their 95% size-calibrated envelopes
+# --------------------------------------------------------------------
+results_tbl <- diag_tbl %>%
+  left_join(worm_scores, by = "id") %>%
+  mutate(
+    good = (ad_q > 0.10 & bp_q > 0.10 & reset_q > 0.10 & dw_q > 0.10) &
+           !fail_sup & !fail_l2
+  ) %>%
+  arrange(desc(!good), desc(fail_sup | fail_l2), ad_q, bp_q, reset_q, dw_q)
+
+# Inspect how many are "good"
+summary_good <- summarise(results_tbl, n_models = n(), n_good = sum(good, na.rm = TRUE))
+
+# --------------------------------------------------------------------
+# 8) Useful summaries
+# --------------------------------------------------------------------
+# Worst offenders by SUP
+worst_sup <- results_tbl %>%
+  arrange(desc(SUP)) %>%
+  select(id, n0, SUP, SUP_95, fail_sup, L2, L2_95, fail_l2, ad_q, bp_q, reset_q, dw_q, good) %>%
+  head(15)
+
+# Save outputs you care about:
+results_tbl
+summary_good
+worst_sup
+```
+

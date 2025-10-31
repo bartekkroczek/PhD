@@ -4,8 +4,7 @@ author: "Bartek Kroczek"
 format: html
 editor: source
 ---
-
-## Does varying cue-stimulus interval affect the sensory discrimination performance in the antisaccade task?
+# Linear trend in PDI antisaccade relationship
 
 ```{r}
 #| include: false
@@ -20,6 +19,7 @@ library(scales)
 library(ggtext)
 library(latex2exp)
 library(tseries)
+library(patchwork)   # for gluing plots
 
 ```
 
@@ -36,6 +36,29 @@ data.names <-
 data.files <- read_csv(data.names)
 ```
 
+## DEMOGRAPHICS
+```{r}
+demographics <- data.names |>
+  str_extract("[^/]+$") |>
+  str_remove("_.*$")
+
+# keep only entries that match <digits><letter><digits>
+mask <- grepl("^[0-9]+[A-Za-z][0-9]+$", demographics)
+
+# extract the middle letter
+sex <- sub("^[0-9]+([A-Za-z])[0-9]+$", "\\1", demographics[mask])
+
+# extract the number after the letter (the “second number”)
+age <- as.integer(sub("^[0-9]+[A-Za-z]([0-9]+)$", "\\1", demographics[mask]))
+```
+
+```{r}
+table(sex)
+summary(age)
+sd(age)
+```
+
+
 ```{r}
 #| include: false
 data.aggr <-
@@ -47,7 +70,7 @@ data.aggr <-
   summarise(mean_corr = 100.0 * mean(Corr)) 
 ```
 
-# Fig 2. Single participant Data
+## Single participant Data
 
 ```{r}
 #| echo: false
@@ -64,10 +87,377 @@ data.aggr |>
   labs(x = "PDI in [ms]", y = "Average correctness")
 ```
 
+## RESIDUALS AND WORM PLOTS
+
+### Formal test
+
+```{r}
+# ---- packages ----
+library(dplyr)
+library(purrr)
+library(broom)
+library(lmtest)
+
+
+# ---- 1) Fit per-participant linear models ----
+fits_tbl <- data.aggr %>%
+  group_by(PART_ID) %>%
+  do(fit = lm(mean_corr ~ t, data = .)) %>%
+  ungroup() %>%
+  rename(id = PART_ID)
+```
+
+```{r}
+# Specify the IDs you want, in the order you want them plotted
+wanted_ids <- c("31K25", "69K21", "136K22", "52K20")
+
+# Filter fits_tbl to those IDs and keep order as given in wanted_ids
+fits_sel <- fits_tbl %>%
+  semi_join(tibble(id = wanted_ids), by = "id") %>%
+  mutate(id = factor(id, levels = wanted_ids)) %>%
+  arrange(id)
+
+qq_plot_apa <- function(fit, id_label) {
+  res <- residuals(fit)
+  df <- data.frame(res = res)
+  ggplot(df, aes(sample = res)) +
+    stat_qq(size = 1.5, alpha = 0.7) +
+    stat_qq_line(color = "red", linewidth = 0.8) +
+    labs(title = paste("ID:", id_label),
+         x = "Theoretical Quantiles", y = "Sample Quantiles") +
+    theme_apa() +
+    theme(plot.title = element_text(hjust = 0.5))
+}
+
+plots <- map2(fits_sel$fit, as.character(fits_sel$id),
+              ~ qq_plot_apa(.x, .y))
+
+# Arrange 2x2 with patchwork (assumes 4 IDs)
+final_plot <- (plots[[1]] + plots[[2]]) /
+              (plots[[3]] + plots[[4]])
+
+final_plot
+```
+
+
+```{r}
+global_normality_from_tbl <- function(fits_tbl, alpha = 0.05) {
+  # 1) get Shapiro-Wilk p-values per participant
+  p <- fits_tbl %>%
+    mutate(p = map_dbl(fit, ~{
+      r <- residuals(.x); r <- r[is.finite(r)]
+      if (length(r) < 3) NA_real_ else shapiro.test(r)$p.value
+    })) %>%
+    pull(p)
+  p <- p[is.finite(p)]
+  if (length(p) == 0) stop("No valid p-values extracted.")
+  # guard against underflow zeros for combination methods
+  p[p <= 0] <- .Machine$double.xmin
+
+  n <- length(p)
+  k <- sum(p < alpha)
+  prop <- k / n
+
+  # 2) tests
+  binom_res <- binom.test(k, n, p = alpha, alternative = "greater")
+  ks_res <- suppressWarnings(stats::ks.test(p, "punif", 0, 1))
+
+  # Fisher
+  fisher_stat <- -2 * sum(log(p))
+  fisher_p <- pchisq(fisher_stat, df = 2 * n, lower.tail = FALSE)
+
+  # Stouffer (equal weights)
+  z <- qnorm(1 - p)
+  Z_stouffer <- sum(z) / sqrt(n)
+  stouffer_p <- 1 - pnorm(Z_stouffer)
+
+  # Simes
+  ps <- sort(p)
+  simes_p <- min(ps * n / seq_len(n)); if (simes_p > 1) simes_p <- 1
+
+  # 3) concise print
+  cat(sprintf("n = %d, alpha = %.2f\n", n, alpha))
+  cat(sprintf("Shapiro–Wilk rejections: %d (%.1f%%). Binomial p = %.3g\n",
+              k, 100*prop, binom_res$p.value))
+  cat(sprintf("Uniformity of p-values: KS D = %.3f, p = %.3g\n",
+              unname(ks_res$statistic), ks_res$p.value))
+  cat(sprintf("Combined evidence: Fisher p = %.3g; Stouffer Z = %.2f (p = %.3g); Simes p = %.3g\n",
+              fisher_p, Z_stouffer, stouffer_p, simes_p))
+
+  invisible(list(
+    n = n, alpha = alpha, k = k, prop = prop,
+    binomial_p = binom_res$p.value,
+    ks_D = unname(ks_res$statistic), ks_p = ks_res$p.value,
+    fisher_stat = fisher_stat, fisher_p = fisher_p,
+    stouffer_Z = Z_stouffer, stouffer_p = stouffer_p,
+    simes_p = simes_p, pvals = p
+  ))
+}
+
+# Example:
+res <- global_normality_from_tbl(fits_tbl, alpha = 0.05)
+
+```
+
+```{r}
+library(tidyverse)
+library(broom)
+library(nortest)     # ad.test for Anderson-Darling test
+library(e1071)       # skewness, kurtosis
+library(fBasics)     # dagoTest for D'Agostino–Pearson omnibus normality test
+
+# Function to check normality of residuals for each model (Shapiro–Wilk and D'Agostino–Pearson)
+check_normality <- function(fits_tbl, alpha = 0.05) {
+
+  normality_results <- fits_tbl %>%
+    mutate(
+      residuals   = map(fit, residuals),
+      n           = map_int(residuals, length),
+
+      # Tests
+      shapiro_p   = map_dbl(residuals, ~ shapiro.test(.x)$p.value),
+      dago_p      = map_dbl(residuals, ~ {
+        n <- length(.x)
+        if (n < 8) return(NA_real_)
+        out <- tryCatch(suppressWarnings(fBasics::dagoTest(as.numeric(.x))),
+                        error = function(e) NULL)
+        if (is.null(out)) return(NA_real_)
+        test <- tryCatch(out@test, error = function(e) NULL)
+        if (is.null(test)) return(NA_real_)
+        # Extract the omnibus (combined) p-value from fBasics::dagoTest output
+        if (is.data.frame(test) && "p.value" %in% names(test)) {
+          rn <- rownames(test)
+          if (!is.null(rn)) {
+            idx <- which(grepl("omnibus", tolower(rn)))
+            if (length(idx) >= 1) return(as.numeric(test$p.value[idx[1]]))
+          }
+          # Fallback: use last row (omnibus is typically last)
+          return(as.numeric(test$p.value[nrow(test)]))
+        }
+        pv <- tryCatch(test$p.value, error = function(e) NULL)
+        if (!is.null(pv)) {
+          if (!is.null(names(pv))) {
+            om_idx <- which(grepl("omnibus", tolower(names(pv))))
+            if (length(om_idx) >= 1) return(as.numeric(pv[om_idx[1]]))
+          }
+          return(as.numeric(pv[length(pv)]))
+        }
+        NA_real_
+      }),
+
+      # Effect sizes (with simple normal-approx CIs under H0: normal)
+      skew        = map_dbl(residuals, ~ e1071::skewness(.x, type = 2)),
+      excess_kurt = map_dbl(residuals, ~ e1071::kurtosis(.x, type = 2) - 3),
+      se_skew     = sqrt(6 / n),
+      se_kurt     = sqrt(24 / n),
+      skew_ci_lo  = skew - 1.96 * se_skew,
+      skew_ci_hi  = skew + 1.96 * se_skew,
+      kurt_ci_lo  = excess_kurt - 1.96 * se_kurt,
+      kurt_ci_hi  = excess_kurt + 1.96 * se_kurt
+    ) %>%
+    # Multiple testing corrections per test across models
+    mutate(
+      shapiro_p_bonf = p.adjust(shapiro_p, method = "bonferroni"),
+      shapiro_p_holm = p.adjust(shapiro_p, method = "holm"),
+      dago_p_bonf    = p.adjust(dago_p,    method = "bonferroni"),
+      dago_p_holm    = p.adjust(dago_p,    method = "holm"),
+
+      # Uncorrected pass/fail
+      pass_sw  = shapiro_p > alpha,
+      pass_dp  = dago_p    > alpha,
+
+      # Conservative decision: require both SW and D’Agostino–Pearson to pass
+      pass_both = pass_sw & pass_dp
+    ) %>%
+    select(
+      id, n,
+      shapiro_p, shapiro_p_holm, shapiro_p_bonf,
+      dago_p,    dago_p_holm,    dago_p_bonf,
+      pass_sw, pass_dp, pass_both,
+      skew, skew_ci_lo, skew_ci_hi,
+      excess_kurt, kurt_ci_lo, kurt_ci_hi
+    )
+
+  # Global D'Agostino–Pearson p-values across models
+  dago_ps <- normality_results$dago_p
+  k <- sum(!is.na(dago_ps))
+  # Fisher's method
+  X2 <- -2 * sum(log(dago_ps), na.rm = TRUE)
+  global_dago_fisher_p <- pchisq(X2, df = 2 * k, lower.tail = FALSE)
+  # Cauchy combination (robust to dependence)
+  pcauchy_combine <- function(p) {
+    t_stat <- mean(tan((0.5 - p) * pi), na.rm = TRUE)
+    1 - pcauchy(t_stat)
+  }
+  global_dago_cauchy_p <- pcauchy_combine(dago_ps)
+
+  # Summaries
+  summary_results <- normality_results %>%
+    summarise(
+      total_models           = n(),
+      sw_pass                = sum(pass_sw),
+      dp_pass                = sum(pass_dp),
+      both_pass              = sum(pass_both),
+      sw_pass_holm           = sum(shapiro_p_holm > alpha),
+      dp_pass_holm           = sum(dago_p_holm    > alpha),
+      both_pass_pct          = round(100 * both_pass / total_models, 1),
+      sw_pass_pct            = round(100 * sw_pass / total_models, 1),
+      dp_pass_pct            = round(100 * dp_pass / total_models, 1),
+      sw_pass_holm_pct       = round(100 * sw_pass_holm / total_models, 1),
+      dp_pass_holm_pct       = round(100 * dp_pass_holm / total_models, 1),
+      median_abs_skew        = median(abs(normality_results$skew), na.rm = TRUE),
+      median_abs_excess_kurt = median(abs(normality_results$excess_kurt), na.rm = TRUE)
+    ) %>%
+    mutate(
+      global_dago_fisher_p = global_dago_fisher_p,
+      global_dago_cauchy_p = global_dago_cauchy_p
+    )
+
+  # Print concise summary
+  cat("Normality Tests Summary (alpha =", alpha, ")\n")
+  cat("=========================================\n")
+  cat("Total models:", summary_results$total_models, "\n\n")
+  cat("Uncorrected pass rates (%): SW=", summary_results$sw_pass_pct,
+      ", DP=", summary_results$dp_pass_pct,
+      ", Both(SW&DP)=", summary_results$both_pass_pct, "\n")
+  cat("Holm-corrected pass rates (%): SW=", summary_results$sw_pass_holm_pct,
+      ", DP=", summary_results$dp_pass_holm_pct, "\n\n")
+  cat("Global D'Agostino–Pearson p-values across models: Fisher=",
+      signif(summary_results$global_dago_fisher_p, 4),
+      ", Cauchy=", signif(summary_results$global_dago_cauchy_p, 4), "\n")
+  cat("Effect size medians: |skew|=", round(summary_results$median_abs_skew, 3),
+      ", |excess kurtosis|=", round(summary_results$median_abs_excess_kurt, 3), "\n")
+
+  return(list(
+    detailed_results = normality_results,
+    summary = summary_results,
+    global = list(dago_fisher = global_dago_fisher_p,
+                  dago_cauchy = global_dago_cauchy_p)
+  ))
+}
+
+# Run
+results <- check_normality(fits_tbl)
+```
+
+```{r}
+# ---- 2) Safe wrappers for diagnostics ----
+safe_bp_p <- function(f) {
+  if (!inherits(f, "lm") || df.residual(f) < 3) return(NA_real_)
+  suppressWarnings(tryCatch(lmtest::bptest(f)$p.value, error = function(e) NA_real_))
+}
+safe_reset_p <- function(f) {
+  if (!inherits(f, "lm") || df.residual(f) < 5) return(NA_real_)
+  suppressWarnings(tryCatch(lmtest::resettest(f, power = 2:3)$p.value, error = function(e) NA_real_))
+}
+safe_dw_p <- function(f) {
+  if (!inherits(f, "lm") || df.residual(f) < 3) return(NA_real_)
+  suppressWarnings(tryCatch(lmtest::dwtest(f)$p.value, error = function(e) NA_real_))
+}
+
+# ---- 3) Diagnostics + BH multiplicity control (alpha = 0.10) ----
+diag_tbl <- fits_tbl %>%
+  mutate(
+    n       = map_int(fit, nobs),
+    bp_p    = map_dbl(fit, safe_bp_p),     # heteroskedasticity (Breusch–Pagan)
+    reset_p = map_dbl(fit, safe_reset_p),  # functional form (Ramsey RESET)
+    dw_p    = map_dbl(fit, safe_dw_p)      # lag-1 autocorrelation (Durbin–Watson)
+  ) %>%
+  transmute(id, n, bp_p, reset_p, dw_p) %>%
+  mutate(
+    bp_q    = p.adjust(bp_p,    method = "BH"),
+    reset_q = p.adjust(reset_p, method = "BH"),
+    dw_q    = p.adjust(dw_p,    method = "BH")
+  )
+
+# ---- 4) Single adequacy decision per model ----
+results_tbl <- diag_tbl %>%
+  mutate(good = (bp_q > 0.10) & (reset_q > 0.10) & (dw_q > 0.10)) %>%
+  arrange(good, bp_q, reset_q, dw_q)
+
+# ---- 5) Summary answering the question ----
+summary_good <- summarise(results_tbl,
+                          n_models = n(),
+                          n_good   = sum(good, na.rm = TRUE),
+                          n_bad    = n_models - n_good,
+                          bad_frac = n_bad / n_models)
+
+# Objects you care about:
+results_tbl
+summary_good
+```
+
+
+### Worm plot
+```{r}
+fits_tbl <- data.aggr |>
+  do(model = lm(mean_corr ~ t, data = .)) |> 
+  rename(fit = model,
+         id = PART_ID) 
+
+# fits_tbl: tibble with columns id (chr) and fit (<lm>)
+
+# Common quantile grid and corresponding z
+q_grid <- seq(0.02, 0.98, length.out = 97)
+z_grid <- qnorm(q_grid)
+
+worm_from_fit <- function(fit, id, z_grid) {
+  if (!inherits(fit, "lm")) return(NULL)
+  r <- tryCatch(rstudent(fit), error = function(e) rstandard(fit))
+  r <- r[is.finite(r)]
+  n <- length(r)
+  if (n < 8) return(NULL)
+  r_ord <- sort(r)
+  z <- qnorm(ppoints(n))
+  d <- r_ord - z
+  d_grid <- approx(x = z, y = d, xout = z_grid, rule = 2)$y
+  tibble(id = id, z = z_grid, d = d_grid)
+}
+
+# IMPORTANT: use rowwise + list(), not map2
+worms_grid <- fits_tbl %>%
+  rowwise() %>%
+  mutate(worm = list(worm_from_fit(fit, id, z_grid))) %>%
+  ungroup() %>%
+  filter(!purrr::map_lgl(worm, is.null)) %>%
+  tidyr::unnest(worm, names_sep = "_") %>%
+  transmute(id, z = worm_z, d = worm_d)
+
+# 2) Aggregate across participants
+agg <- worms_grid %>%
+  group_by(z) %>%
+  summarise(
+    mean_d = mean(d, na.rm = TRUE),         # population-average worm
+    sd_d   = sd(d, na.rm = TRUE),
+    p05    = quantile(d, 0.05, na.rm = TRUE),
+    p95    = quantile(d, 0.95, na.rm = TRUE),
+    m      = sum(!is.na(d))
+  ) %>%
+  mutate(se = sd_d / sqrt(m),
+         ci_lo = mean_d - 1.96 * se,
+         ci_hi = mean_d + 1.96 * se)
+
+# 3) Plot: mean worm with pointwise CI (blue) and 5–95% participant band (grey)
+p1 <- ggplot(agg, aes(z, mean_d)) +
+  geom_ribbon(aes(ymin = p05, ymax = p95), fill = "grey90") +
+  geom_ribbon(aes(ymin = ci_lo, ymax = ci_hi), fill = "steelblue", alpha = 0.25) +
+  geom_hline(yintercept = 0, linetype = 2, color = "grey50") +
+  geom_line(color = "steelblue", linewidth = 1) +
+  labs(x = "Expected normal quantile z",
+       y = "Mean (residual − z)",
+       title = "Aggregated worm plot across participants",
+       subtitle = "Blue: 95% CI for mean worm; Grey: 5–95% participant spread")
+p1 + 
+  theme_apa()
+```
+
+
+
+## RESID
+
 # Fig 3. Beta coeff distribution
 
 ```{r}
-
 beta_coeffs <- data.aggr |>
   do(model = lm(mean_corr ~ t, data = .)) |>
   mutate(beta  = model$coefficients[[2]])
@@ -79,6 +469,33 @@ shapiro_test <- shapiro.test(beta_coeffs$beta)
 # Performing Jarque-Bera test
 jarque_bera_test <- jarque.bera.test(beta_coeffs$beta)
 
+# One-sample t-test for mean(beta) vs 0
+tt <- t.test(beta_coeffs$beta, mu = 0)
+
+# Basic effect sizes (closed-form)
+n  <- length(beta_coeffs$beta)
+df <- n - 1
+
+# r (point-biserial equivalent for one-sample t)
+r  <- as.numeric(tt$statistic) / sqrt(as.numeric(tt$statistic)^2 + df)
+es_d <- effectsize::cohens_d(beta_coeffs$beta, ci = 0.95, hedges.correction = FALSE)
+es_g <- effectsize::hedges_g(beta_coeffs$beta, ci = 0.95)
+
+es_out <- list(
+  t_test      = tt,
+  cohen_d     = list(estimate = unname(es_d$Cohens_d),
+                      ci = es_d[, c("CI_low", "CI_high")]),
+  hedges_g    = list(estimate = unname(es_g$Hedges_g),
+                      ci = es_g[, c("CI_low", "CI_high")]),
+  r_effect    = r
+)
+
+
+# Inspect
+es_out
+```
+
+```{r}
 # Creating LaTeX strings for the test results
 shapiro_latex <-
   TeX(paste(

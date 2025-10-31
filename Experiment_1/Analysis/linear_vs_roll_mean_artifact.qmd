@@ -1,0 +1,419 @@
+---
+title: "linear_vs_roll_mean_artifact"
+format: html
+---
+
+# Fake oscillations induction
+
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(papaja)
+library(patchwork)
+library(ggtext)
+library(dplyr)
+library(gridExtra)
+library(grid)
+library(purrr)
+library(tibble)
+library(tidyr)
+library(multitaper)
+library(scales)
+library(stringr)
+
+set.seed(123) 
+```
+```{r}
+#| label: load-data
+#| include: false
+
+data.names <- list.files('../Data', full.names = T, pattern = '*.csv$')
+data.files <- read_csv(data.names)
+```
+
+```{r}
+#| include: false
+data.aggr <-
+  data.files |>
+  filter(Trial_type == "experiment", Rt > 0.0) |> # Experiment and no timeout
+  select(PART_ID, CSI, Corr) |>
+  mutate(t = CSI * 16.6) |>
+  group_by(PART_ID, t) |>
+  summarise(mean_corr = 100.0 * mean(Corr)) 
+```
+
+```{r}
+#| echo: false
+data.aggr |> 
+  filter(PART_ID == "140M21") |>
+  ggplot(mapping = aes(x=t, y=mean_corr/100.0)) +
+  geom_point() +
+  geom_line() + 
+  geom_smooth(method='lm', formula = y ~ x) +
+  ggtitle("Single participant data", 
+          subtitle = "Blue line represents linear regression fitted to data") + 
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "PDI in [ms]", y = "Average correctness") +
+  theme_apa()
+```
+
+```{r}
+# ========== FIXED ANALYSIS PARAMETERS ==========
+fs <- 60                  # Hz
+deltat <- 1/fs            # s
+NW <- 3                   # time-bandwidth
+K  <- 2*NW - 1            # number of tapers
+Q_FDR <- 0.05             # BH-FDR within participant
+FOI_LO <- 1.25            # Hz
+FOI_HI <- 30              # Hz
+
+# ========== ANALYSIS CORE (strict 60 Hz; FOI 1.25–30 Hz) ==========
+analyze_participant <- function(df_part, nw = NW, k = K, q = Q_FDR,
+                                foi_lo = FOI_LO, foi_hi = FOI_HI) {
+  df_part <- df_part %>% arrange(t)
+  x_raw <- df_part$mean_corr
+  ok <- is.finite(x_raw)
+  x_raw <- x_raw[ok]
+  N <- length(x_raw)
+  if (N < 8) {
+    return(list(
+      freqs = tibble(PART_ID = df_part$PART_ID[1]) %>% slice(0),
+      summary = tibble(
+        PART_ID = df_part$PART_ID[1],
+        N = N, fs = fs, deltat_s = deltat,
+        duration_s = N/fs, rayleigh_hz = ifelse(N>0, fs/N, NA_real_),
+        any_sig = FALSE, n_sig = 0L,
+        p_global = NA_real_, min_p = NA_real_, min_p_freq_hz = NA_real_
+      )
+    ))
+  }
+
+  # Standardize for spectral test
+  xz <- as.numeric(scale(x_raw, center = TRUE, scale = TRUE))
+
+  res <- multitaper::spec.mtm(
+    xz, k = k, nw = nw, nFFT = N, deltat = deltat,
+    Ftest = TRUE, returnInternals = TRUE, plot = FALSE
+  )
+  freqs <- res$freq   # Hz
+
+  # Extract harmonic F-test p-values
+  Fvals <- NULL; pvals <- NULL
+  if (!is.null(res$mtm$Ftest)) {
+    Ft <- res$mtm$Ftest
+    if (is.numeric(Ft)) Fvals <- as.numeric(Ft)
+    if (is.list(Ft) || is.data.frame(Ft)) {
+      nm <- tolower(names(Ft))
+      if ("f" %in% nm) Fvals <- as.numeric(Ft[[which(nm == "f")[1]]])
+      if (is.null(Fvals) && "ftest" %in% nm) Fvals <- as.numeric(Ft[[which(nm == "ftest")[1]]])
+      if (is.null(pvals) && "pvalues" %in% nm) pvals <- as.numeric(Ft[[which(nm == "pvalues")[1]]])
+      if (is.null(pvals) && "p.value" %in% nm) pvals <- as.numeric(Ft[[which(nm == "p.value")[1]]])
+    }
+  }
+  if (is.null(pvals)) {
+    if (is.null(Fvals)) stop("Could not extract F-test; inspect str(res).")
+    pvals <- stats::pf(Fvals, df1 = 2, df2 = 2 * k - 2, lower.tail = FALSE)
+  }
+
+  # Keep only FOI (and >0 Hz)
+  keep <- is.finite(pvals) & freqs >= foi_lo & freqs <= foi_hi
+  freqs <- freqs[keep]
+  pvals <- pvals[keep]
+  m <- length(pvals)
+  if (m == 0) {
+    return(list(
+      freqs = tibble(PART_ID = df_part$PART_ID[1]) %>% slice(0),
+      summary = tibble(
+        PART_ID = df_part$PART_ID[1],
+        N = N, fs = fs, deltat_s = deltat,
+        duration_s = N/fs, rayleigh_hz = fs/N,
+        any_sig = FALSE, n_sig = 0L,
+        p_global = NA_real_, min_p = NA_real_, min_p_freq_hz = NA_real_
+      )
+    ))
+  }
+
+  p_adj <- p.adjust(pvals, method = "BH")
+  sig <- p_adj < q
+
+  p_min <- min(pvals, na.rm = TRUE)
+  p_global <- min(1, p_min * m)   # Bonferroni within FOI
+
+  tib_freq <- tibble(
+    PART_ID = df_part$PART_ID[1],
+    freq_hz = freqs,
+    p = pvals,
+    p_fdr = p_adj,
+    sig = sig
+  )
+
+  list(
+    freqs = tib_freq,
+    summary = tibble(
+      PART_ID = df_part$PART_ID[1],
+      N = N, fs = fs, deltat_s = deltat,
+      duration_s = N/fs, rayleigh_hz = fs/N,
+      any_sig = any(sig), n_sig = sum(sig),
+      p_global = p_global, min_p = p_min,
+      min_p_freq_hz = freqs[which.min(pvals)]
+    )
+  )
+}
+
+# Ensure column types in your df
+data.aggr <- data.aggr %>%
+  mutate(
+    PART_ID = as.character(PART_ID),
+    t = as.numeric(t),
+    mean_corr = as.numeric(mean_corr)
+  )
+```
+
+```{r}
+# Run analysis per participant
+res_list <- data.aggr %>%
+  group_by(PART_ID) %>%
+  group_split() %>%
+  map(~ analyze_participant(.x, nw = NW, k = K, q = Q_FDR, foi_lo = FOI_LO, foi_hi = FOI_HI))
+
+per_part_freqs   <- map_dfr(res_list, "freqs")
+per_part_summary <- map_dfr(res_list, "summary")
+
+# Group-level Fisher combination of per-participant global p-values (within FOI)
+pvec <- per_part_summary %>% filter(is.finite(p_global)) %>% pull(p_global)
+X <- -2 * sum(log(pvec))
+p_group <- stats::pchisq(X, df = 2 * length(pvec), lower.tail = FALSE)
+
+```
+
+```{r}
+roll_mean <- (function(x, n = 3)
+  stats::filter(x, rep(1 / n, n), sides = 2))
+
+res_list <-  data.aggr %>%
+  group_by(PART_ID) %>%
+  group_split() %>%
+  map(~ .x %>%
+    mutate(mean_corr = roll_mean(mean_corr, n = 3)) %>%
+    drop_na(mean_corr) %>%     # remove rows with NA after rolling mean
+    analyze_participant(nw = NW, k = K, q = Q_FDR, foi_lo = FOI_LO, foi_hi = FOI_HI))
+
+per_part_freqs   <- map_dfr(res_list, "freqs")
+per_part_summary <- map_dfr(res_list, "summary")
+
+# Group-level Fisher combination of per-participant global p-values (within FOI)
+pvec <- per_part_summary %>% filter(is.finite(p_global)) %>% pull(p_global)
+X <- -2 * sum(log(pvec))
+p_group <- stats::pchisq(X, df = 2 * length(pvec), lower.tail = FALSE)
+p_group
+```
+
+
+```{r}
+# Group by participant and nest data
+nested_data <- data.aggr |>
+  arrange(PART_ID, t) |>
+  group_by(PART_ID)
+
+# Define a function to detrend and perform the Ljung-Box test
+roll_process_data <- function(mean_corr, t) {
+  roll_mean_values <- na.omit(roll_mean(mean_corr))
+  fit <- lm(roll_mean_values ~  poly(t[1:length(roll_mean_values)], 1))
+  roll_detrended <- residuals(fit)
+  
+  fit <- lm(mean_corr ~ poly(t, 1))
+  good_detrended <- residuals(fit)
+  
+  # Ljung-Box test on the detrended series
+  roll_test_result <- Box.test(roll_detrended, type = "Ljung-Box")
+  good_test_result <- Box.test(good_detrended, type = "Ljung-Box")
+  
+  # Return a tibble with the results
+  tibble(
+    roll_p_value = roll_test_result$p.value,
+    roll_statistic = roll_test_result$statistic,
+    roll_lag = roll_test_result$parameter,
+    roll_method = roll_test_result$method,
+    good_p_value = good_test_result$p.value,
+    good_statistic = good_test_result$statistic,
+    good_lag = good_test_result$parameter,
+    good_method = good_test_result$method
+  )
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+roll_mean <- (function(x, n = 3)
+  stats::filter(x, rep(1 / n, n), sides = 2))
+
+# Group by participant and nest data
+nested_data <- data.aggr |>
+  arrange(PART_ID, t) |>
+  group_by(PART_ID)
+
+# Define a function to detrend and perform the Ljung-Box test
+roll_process_data <- function(mean_corr, t) {
+  roll_mean_values <- na.omit(roll_mean(mean_corr))
+  fit <- lm(roll_mean_values ~  poly(t[1:length(roll_mean_values)], 1))
+  roll_detrended <- residuals(fit)
+  
+  fit <- lm(mean_corr ~ poly(t, 1))
+  good_detrended <- residuals(fit)
+  
+  # Ljung-Box test on the detrended series
+  roll_test_result <- Box.test(roll_detrended, type = "Ljung-Box")
+  good_test_result <- Box.test(good_detrended, type = "Ljung-Box")
+  
+  # Return a tibble with the results
+  tibble(
+    roll_p_value = roll_test_result$p.value,
+    roll_statistic = roll_test_result$statistic,
+    roll_lag = roll_test_result$parameter,
+    roll_method = roll_test_result$method,
+    good_p_value = good_test_result$p.value,
+    good_statistic = good_test_result$statistic,
+    good_lag = good_test_result$parameter,
+    good_method = good_test_result$method
+  )
+}
+
+# Apply the function to each nested dataframe
+ljung_box_results <- nested_data |>
+  mutate(roll_results = roll_process_data(mean_corr, t)) |>
+  ungroup() |>
+  unnest() |>
+  group_by(PART_ID) |>
+  slice_head(n = 1)
+
+# Adjust p-values for multiple comparisons
+ljung_box_results <- ljung_box_results |>
+  mutate(roll_adjusted_p_value = p.adjust(roll_p_value, method = "BH"),
+         good_adjusted_p_value = p.adjust(good_p_value, method = "BH"))
+
+# View the results
+print(ljung_box_results)
+```
+
+```{r}
+# Group by participant and nest data
+nested_data <- data.aggr |>
+  arrange(PART_ID, t) |>
+  group_by(PART_ID) |>
+  nest()
+
+# Define a function to detrend and perform the Ljung-Box test
+process_data <- function(df) {
+  df$roll_mean_values <- roll_mean(df$mean_corr)
+  clean_data <- df[complete.cases(df), ]
+  fit <- lm(roll_mean_values ~  poly(t, 1), data = clean_data)
+  clean_data$roll_detrended <- residuals(fit)
+  
+  # Polynomial Detrending
+  fit <- lm(mean_corr ~ poly(t, 1), data = df)
+  df$detrended_mean_corr <- residuals(fit)
+  
+  # Ljung-Box test on the detrended series
+  good_test_result <- Box.test(df$detrended_mean_corr, type = "Ljung-Box", lag = 9)
+  roll_test_result <- Box.test(clean_data$roll_detrended, type = "Ljung-Box", lag = 9)
+  
+  # Return a tibble with the results
+  tibble(
+    good_p_value = good_test_result$p.value,
+    good_statistic = good_test_result$statistic,
+    good_lag = good_test_result$parameter,
+    good_method = good_test_result$method,
+    roll_p_value = roll_test_result$p.value,
+    roll_statistic = roll_test_result$statistic,
+    roll_lag = roll_test_result$parameter,
+    roll_method = roll_test_result$method
+  )
+}
+
+# Apply the function to each nested dataframe
+ljung_box_results <- nested_data %>%
+  mutate(results = map(data, process_data)) %>%
+  select(-data) %>%
+  unnest(results) %>%
+  ungroup()
+
+# Adjust p-values for multiple comparisons
+ljung_box_results <- ljung_box_results %>%
+  mutate(good_adjusted_p_value = p.adjust(good_p_value, method = "BH"),
+         roll_adjusted_p_value = p.adjust(roll_p_value, method = "BH"))
+
+
+# View the results
+print(ljung_box_results)
+```
+
+```{r}
+good_p_val_dist <- ljung_box_results |>
+  ggplot(mapping = aes(x = good_adjusted_p_value)) +
+  geom_density(alpha=0.2,  fill='#0D94E5', color="#0D94E5") +
+  geom_vline(xintercept = 0.05, lty=2, color="#DF5069") + 
+  theme_apa() + 
+  scale_x_continuous(breaks= c(0.05, 0.25, 0.50, 0.75, 1.00)) +
+  theme(axis.ticks.y = element_blank(),
+        axis.text.y = element_blank()) +
+  xlab("p-value") + 
+  ylab("Density")
+```
+
+```{r}
+roll_p_val_dist <- ljung_box_results |>
+  ggplot(mapping = aes(x = roll_adjusted_p_value)) +
+  geom_density(alpha=0.2,  fill='#006400', color="#006400") +
+  geom_vline(xintercept = 0.05, lty=2, color="#DF5069") + 
+  theme_apa() + 
+  scale_x_continuous(breaks= c(0.001, 0.01, 0.05), limits = c(0, 0.051)) +
+  theme(axis.ticks.y = element_blank(),
+        axis.text.y = element_blank()) +
+  xlab("p-value")  +
+  ylab("")
+```
+
+```{r}
+combined_plot <- good_p_val_dist + 
+  roll_p_val_dist +
+  plot_annotation(
+    title = "Distribution of BH corrected p-values of Jlung Box test across participants",
+    subtitle = "Both <span style='color:#0D94E5;'>without</span> and <span style='color:#006400;'>with</span> moving average applied during preprocessing",
+    caption = "Red horizontal dashed line represents significance threshold",
+    tag_levels = "A"
+  ) &
+  theme(
+    plot.title = element_textbox_simple(size = 12),
+    plot.subtitle = element_textbox_simple(size = 10, lineheight = 1.2, family = "sans"),
+    plot.caption = element_text(size = 10)
+  )
+
+plot(combined_plot)
+ggsave("p_val_dist.png", combined_plot, dpi = 600)
+```
+
+```{r}
+# How many participants has significant values 
+ljung_box_results |> 
+  ungroup() |>
+  summarise(
+  Significant_Raw = sum(p_value < 0.05),
+  Significant_Adjusted = sum(adjusted_p_value < 0.05))
+```

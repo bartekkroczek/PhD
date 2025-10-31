@@ -1,0 +1,197 @@
+---
+title: "rouder_analizy"
+format: html
+---
+  
+  ## Mine 
+  
+  
+```{r}
+# Load libraries
+library(tidyverse)
+library(fs)
+library(patchwork)
+library(lavaan)
+library(ggplot2)
+library(psych)
+library(corrplot)
+library(GPArotation)
+library(semTools)
+  
+```
+
+
+```{r}
+create_saccade_plots <- function(df, cors, contrast, y_lab) {
+
+  
+  p1 <- ggplot(df, aes(x = pro, y = anti)) +
+    geom_point(color = scales::alpha("blue", 0.3), size = 3) +
+    geom_smooth(method = "lm", se = TRUE, linetype = 2, color = "black") +
+    annotate("text", x = mean(df$pro), y = max(df$anti) * 0.9, label = paste0("R = ", cors[1,2])) +
+    labs(x = "Prosaccade Duration", y = "Antisaccade Duration") +
+    #  coord_fixed(ratio = 1, xlim = c(100, 450), ylim = c(175, 625)) +
+    theme_minimal() +
+    ggtitle("A.")
+  
+  p2 <- ggplot(df, aes(x = pro, y = .data[[contrast]])) +
+    geom_point(color = "blue", size = 3, alpha = 0.3) +
+    geom_smooth(method = "lm", se = TRUE, linetype = 2, color = "black") +
+    annotate("text", x = mean(df$pro), y = max(df[[contrast]] * 0.9), label = paste0("R = ", cors[1,3])) +
+    labs(x = "Prosaccade Duration", y = y_lab) +
+    # coord_cartesian(xlim = c(100, 450), ylim = c(0, 250)) +
+    theme_minimal() +
+    ggtitle("B.")
+  
+  p3 <- ggplot(df, aes(x = anti, y = .data[[contrast]])) +
+    geom_point(color = "blue", size = 3, alpha = 0.3) +
+    geom_smooth(method = "lm", se = TRUE, linetype = 2, color = "black") +
+    annotate("text", x = mean(df$anti), y = max(df[[contrast]] * 0.9), label = paste0("R = ", cors[2,3])) +
+    labs(x = "Antisaccade Duration", y = y_lab) +
+    #coord_cartesian(xlim = c(175, 625), ylim = c(0, 225)) +
+    theme_minimal() +
+    ggtitle("C.")
+  
+  return(p1 + p2 + p3 + plot_layout(ncol = 3))
+}
+```
+
+```{r}
+# Load data
+
+saccades <- read_csv("cleaned_cognitive_data.csv")
+
+```
+
+```{r}
+validate_factor_analysis <- function(data, prefix = "PS_") {
+  
+  df_numeric <- data %>% 
+    select(starts_with(prefix)) %>% 
+    drop_na()
+  
+  n_vars <- ncol(df_numeric)
+  n_obs  <- nrow(df_numeric)
+  
+  corr_matrix <- cor(df_numeric, use = "pairwise.complete.obs")
+  kmo  <- KMO(df_numeric)
+  bart <- cortest.bartlett(df_numeric)
+  pa   <- fa.parallel(df_numeric, n.iter=1000, fa = "fa", plot = FALSE)
+  efa  <- fa(df_numeric, nfactors = 1, rotate = "none")
+  
+  # Safe variance explained
+  var_explained <- sum(efa$Vaccounted[2]) * 100
+  
+  cat("\n=== FACTOR ANALYSIS VALIDATION ===\n")
+  cat(sprintf("Variables: %d | Observations: %d\n\n", n_vars, n_obs))
+  
+  cat("CORRELATION MATRIX\n")
+  print(round(corr_matrix, 2))
+  cat(sprintf("Mean r = %.3f | Range = %.3f – %.3f\n\n",
+              mean(corr_matrix[lower.tri(corr_matrix)]),
+              min(corr_matrix[lower.tri(corr_matrix)]),
+              max(corr_matrix[lower.tri(corr_matrix)])))
+  
+  cat("SAMPLING ADEQUACY\n")
+  cat(sprintf("KMO = %.3f (%s)\n", kmo$MSA,
+              dplyr::case_when(kmo$MSA >= 0.9 ~ "Marvelous",
+                               kmo$MSA >= 0.8 ~ "Meritorious",
+                               kmo$MSA >= 0.7 ~ "Middling",
+                               TRUE ~ "Unacceptable")))
+  cat(sprintf("Bartlett χ²(%d) = %.2f, p  = %.3f\n\n", bart$df, bart$chisq, bart$p.value))
+  
+  cat("FACTOR RETENTION\n")
+  cat(sprintf("Parallel analysis suggests %d factor(s)\n\n", pa$nfact))
+  
+  cat("ONE-FACTOR SOLUTION\n")
+  cat(sprintf("Eigenvalue = %.3f | Variance explained = %.1f%%\n\n",
+              efa$values[1], var_explained))
+  
+  cat("LOADINGS & COMMUNALITIES\n")
+  loadings_tbl <- tibble(
+    Variable    = names(efa$loadings[,1]),
+    Loading     = round(efa$loadings[,1], 3),
+    Communality = round(efa$communality, 3)
+  )
+  print.data.frame(loadings_tbl, row.names = FALSE)
+  
+  invisible(list(cor = corr_matrix, kmo = kmo, bartlett = bart, pa = pa, efa = efa))
+}
+
+cat("=== VALIDATING ANTI-SACCADE FACTOR ANALYSIS ===\n")
+as <- validate_factor_analysis(saccades, prefix = "AS_")
+cat("\n=== VALIDATING PRO-SACCADE FACTOR ANALYSIS ===\n")
+ps <- validate_factor_analysis(saccades, prefix = "PS_")
+```
+
+```{r}
+as_model <- '
+  anti =~ AS_1 + AS_2 + AS_3 + AS_4
+  anti ~~ 1*anti
+'
+ps_model <- '
+  pro =~ PS_1 + PS_2 + PS_3 + PS_4
+  pro ~~ 1*pro
+'
+
+# Fit the CFA models
+fit_as <- cfa(as_model, data = saccades)
+fit_ps <- cfa(ps_model, data = saccades)
+
+# Extract fit indices for reporting
+fit_indices_as <- fitMeasures(fit_as, c("cfi", "rmsea", "rmsea.ci.lower", "rmsea.ci.upper"))
+fit_indices_ps <- fitMeasures(fit_ps, c("cfi", "rmsea", "rmsea.ci.lower", "rmsea.ci.upper"))
+
+# Print fit indices for easy reporting
+cat("Anti-saccade model fit:\n")
+cat(sprintf("CFI = %.3f, RMSEA = %.3f [90%% CI: %.3f, %.3f]\n", 
+            fit_indices_as["cfi"], 
+            fit_indices_as["rmsea"], 
+            fit_indices_as["rmsea.ci.lower"], 
+            fit_indices_as["rmsea.ci.upper"]))
+
+cat("\nPro-saccade model fit:\n")
+cat(sprintf("CFI = %.3f, RMSEA = %.3f [90%% CI: %.3f, %.3f]\n", 
+            fit_indices_ps["cfi"], 
+            fit_indices_ps["rmsea"], 
+            fit_indices_ps["rmsea.ci.lower"], 
+            fit_indices_ps["rmsea.ci.upper"]))
+
+# Calculate McDonald's ω for both models
+omega_as <- reliability(fit_as)[2]
+omega_ps <- reliability(fit_ps)[2]
+
+cat("McDonald’s ω (total):\n")
+cat(sprintf("  Anti-saccade ω = %.3f\n", omega_as))
+cat(sprintf("  Pro-saccade  ω = %.3f\n", omega_ps))
+
+
+# Extract factor scores
+factor_scores_as <- lavaan::predict(fit_as)
+factor_scores_ps <- lavaan::predict(fit_ps)
+
+# Create result dataframe
+saccades_factor <- data.frame(
+  PART_ID = saccades$PART_ID,
+  anti = factor_scores_as,
+  pro = factor_scores_ps
+) |>
+  mutate(diff = anti - pro)
+```
+
+```{r}
+insp_time <- saccades |> 
+mutate(
+    # Z-score normalize each variable
+    inspection_SQUARES_z = scale(inspection_SQUARES)[,1],
+    inspection_CIRCLES_z = scale(inspection_CIRCLES)[,1],
+    # Calculate average of z-scores
+    inspection_time = (inspection_SQUARES_z + inspection_CIRCLES_z) / 2
+  ) |> select(PART_ID, inspection_time)
+```
+
+```{r}
+full_join(saccades_factor, insp_time, by = "PART_ID") |>
+  write_csv("saccades_factor.csv")
+```
+

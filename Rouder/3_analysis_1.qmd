@@ -1,0 +1,123 @@
+---
+title: "3_analysis"
+format: html
+---
+
+```{r}
+library(scales)     # For percent formatting
+library(jtools)     # For theme_apa and apa.reg.table
+library(tidyverse)  # For data manipulation and ggplot
+library(broom)      # For tidy model outputs
+library(psych)      # For descriptives
+library(car)        # For assumption tests
+library(robustbase) # For robust regression
+library(boot)       # For bootstrapping
+library(apaTables)  # For APA table export
+library(ggplot2)    # For plotting
+library(patchwork)  # For combining plots
+```
+
+
+
+```{r}
+rou_rep <- read_csv("saccades_factor.csv")
+head(rou_rep)
+```
+# Saccades vs prosaccades
+
+```{r}
+
+# Assume rou_rep is your data frame with columns "pro" and "anti"
+
+# Descriptive statistics
+descriptives <- psych::describe(rou_rep[, c("pro", "anti")], fast = TRUE)
+print(descriptives)  # Means, SDs, min/max
+
+# Original OLS regression
+model <- lm(anti ~ pro, data = rou_rep)
+model_summary <- summary(model)
+model_tidy <- tidy(model)
+model_glance <- glance(model)
+conf_int <- confint(model, level = 0.95)
+
+# Print OLS results
+print(model_summary)
+cat("\nR-squared:", round(model_glance$r.squared, 3), "\n")
+cat("Adjusted R-squared:", round(model_glance$adj.r.squared, 3), "\n")
+cat("F-statistic:", round(model_glance$statistic, 3), "on", model_glance$df, "and", model_glance$df.residual, "DF\n")
+cat("p-value:", format.pval(model_glance$p.value, digits = 3), "\n")
+
+# Coefficients with CI
+coeff_table <- cbind(model_tidy, conf_int)
+names(coeff_table)[6:7] <- c("ci_lower", "ci_upper")
+print(coeff_table)
+
+# Correlation
+cat("\nPearson r:", round(cor(rou_rep$pro, rou_rep$anti, use = "complete.obs"), 3), "\n")
+
+# Assumption checks
+shapiro_test <- shapiro.test(residuals(model))
+cat("\nShapiro-Wilk p-value:", format.pval(shapiro_test$p.value, digits = 3), "\n")
+ncv_test <- car::ncvTest(model)
+cat("Breusch-Pagan p-value:", format.pval(ncv_test$p, digits = 3), "\n")
+
+# Robust regression (M-estimation to handle violations)
+robust_model <- lmrob(anti ~ pro, data = rou_rep)
+robust_summary <- summary(robust_model)
+robust_conf_int <- confint(robust_model, level = 0.95)
+print(robust_summary)
+cat("\nRobust coefficients with 95% CI:\n")
+print(cbind(coef(robust_model), robust_conf_int))
+
+# Bootstrapped CI for slope (non-parametric, 1000 resamples)
+boot_reg <- function(data, indices) {
+  d <- data[indices, ]
+  coef(lm(anti ~ pro, data = d))[2]  # Slope only
+}
+boot_results <- boot(rou_rep, boot_reg, R = 1000)
+boot_ci <- boot.ci(boot_results, type = "bca")
+cat("\nBootstrapped 95% CI for slope:", boot_ci$bca[4], "to", boot_ci$bca[5], "\n")
+
+# APA-style table (exports to Word for both OLS and robust if desired; here for OLS)
+apa.reg.table(model, filename = "ols_regression_table.doc")
+
+# Visualization (APA-style plot)
+ggplot(rou_rep, aes(x = pro, y = anti)) +
+  geom_smooth(method = "lm", se = TRUE, color = "black", fill = "gray70", alpha = 0.9) +
+  geom_point(alpha = 0.6, size = 2, color = "black") +
+  labs(x = "Prosaccade Task", y = "Antisaccades Task", title = "Linear Regression of Antisaccades on Prosaccades") +
+  theme_apa()  # Use minimal theme if theme_apa not available
+ggsave("regression_plot.png")  # Save plot as PNG
+```
+```{r}
+# Augment data with residuals and fitted values
+aug_data <- augment(model)
+
+# Residuals vs. Fitted (for homoscedasticity)
+p1 <- ggplot(aug_data, aes(x = .fitted, y = .resid)) +
+  geom_smooth(method = "loess", se = FALSE, color = "#009e73", linewidth=2) +
+  geom_point(color = "black", size = 2, alpha=0.6) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  labs(title = "Residuals vs. Fitted Values", x = "Fitted Values", y = "Residuals") +
+  theme_apa()
+
+# Q-Q Plot (for normality)
+p2 <- ggplot(aug_data, aes(sample = .resid)) +
+  stat_qq_line(color = "#009e73", linewidth = 2) +
+  stat_qq(color = "black", size = 2, alpha = 0.6) +
+  labs(title = "Normal Q-Q Plot of Residuals", x = "Theoretical Quantiles", y = "Sample Quantiles") +
+  theme_apa()
+
+# Merge into single plot with labels (APA: use as Figure 1 with subparts)
+combined <- p1 + p2 +
+  plot_annotation(
+    tag_levels = "A",  # Sub-labels: (A) and (B)
+    theme = theme_apa()
+  ) &
+  theme_apa()  # Bold sub-labels
+
+# Display (or ggsave(combined, filename = "fig1.png", width = 10, height = 5, dpi = 300))
+print(combined)
+ggsave(combined, filename = "ols_resids.png", width = 10, height = 5, dpi = 300)
+```
+

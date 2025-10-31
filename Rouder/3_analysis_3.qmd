@@ -1,0 +1,143 @@
+---
+title: "3_analysis_3"
+format: html
+---
+
+```{r}
+library(tidyverse)   # For data manipulation
+library(scales)      # For formatting numbers
+library(jtools)      # For regression diagnostics
+library(patchwork)   # For combining plots
+library(robust)      # For robust regression
+library(broom)       # For tidy and glance
+library(ggplot2)     # For plotting
+library(papaja)      # For APA theme
+library(lm.beta)     # For standardized coefficients
+library(robustbase)  # For robust regression (lmrob)
+library(car)         # For diagnostics (vif, outlierTest)
+library(lmtest)      # For Breusch-Pagan test
+library(boot)        # For bootstrapping
+
+rou_rep <- read_csv("saccades_factor.csv")
+head(rou_rep)
+
+# Descriptives: Means near 0 suggest z-scoring; high SD/range indicate potential outliers (e.g., diff max=3.85 vs min=-1.66; Field, 2013 [source: https://doi.org/10.4135/9781446249222]).
+summary_stats <- rou_rep %>%
+  summarise(
+    mean_inspection = mean(inspection_time, na.rm = TRUE),
+    sd_inspection = sd(inspection_time, na.rm = TRUE),
+    range_inspection = paste(min(inspection_time, na.rm = TRUE), "-", max(inspection_time, na.rm = TRUE)),
+    mean_diff = mean(diff, na.rm = TRUE),
+    sd_diff = sd(diff, na.rm = TRUE),
+    range_diff = paste(min(diff, na.rm = TRUE), "-", max(diff, na.rm = TRUE))
+  )
+cat("\nDescriptive Statistics:\n")
+print(summary_stats)
+
+# Normality check: Shapiro-Wilk; p<0.05 flags non-normality, violating OLS assumptions—e.g., skewed residuals bias SEs, needing robust methods like M-estimation (Huber, 1973 [source: https://doi.org/10.1214/aos/1176342363]).
+shapiro_inspection <- shapiro.test(rou_rep$inspection_time)
+shapiro_diff <- shapiro.test(rou_rep$diff)
+cat("\nShapiro-Wilk for Inspection Time: W =", shapiro_inspection$statistic, ", p =", format.pval(shapiro_inspection$p.value, digits = 3), "\n")
+cat("Shapiro-Wilk for Diff (Call-in Contrast): W =", shapiro_diff$statistic, ", p =", format.pval(shapiro_diff$p.value, digits = 3), "\n")
+
+# Additional checks justifying robustness: Heteroscedasticity (Breusch-Pagan; p<0.05 suggests unequal variance) and outliers (Cook's distance >1 flags influential points).
+model_ols <- lm(diff ~ inspection_time, data = rou_rep)  # Fit early for tests
+bp_test <- bptest(model_ols)  # Tests constant variance
+cat("\nBreusch-Pagan Test for Heteroscedasticity: BP =", bp_test$statistic, ", p =", format.pval(bp_test$p.value, digits = 3), "\n")
+outliers <- outlierTest(model_ols)  # Bonferroni-adjusted
+cat("\nOutlier Test (Bonferroni p):\n")
+print(outliers)
+
+# Correlation: Pearson (parametric) vs Spearman (non-parametric, robust to non-normality; ranks handle skewness, e.g., in behavioral data; Spearman, 1904 [source: https://doi.org/10.2307/1412107]).
+pearson_cor <- cor.test(rou_rep$inspection_time, rou_rep$diff, method = "pearson", use = "complete.obs")
+spearman_cor <- cor.test(rou_rep$inspection_time, rou_rep$diff, method = "spearman", use = "complete.obs")
+cat("\nPearson Correlation: r =", round(pearson_cor$estimate, 3), ", p =", format.pval(pearson_cor$p.value, digits = 3), "\n")
+cat("Spearman Correlation: rho =", round(spearman_cor$estimate, 3), ", p =", format.pval(spearman_cor$p.value, digits = 3), "\n")  # Compare: divergence justifies robustness
+
+# Standard Modelling: OLS linear regression (for comparison)
+# (Model already fitted above for diagnostics)
+
+# Post hoc Diagnostics: Plots to visualize issues (e.g., Q-Q curvature shows non-normality; funnel in residuals vs fitted indicates heteroscedasticity).
+# Extract model data for plotting
+model_data <- fortify(model_ols)
+
+# Create Residuals vs Fitted plot
+p1 <- ggplot(model_data, aes(x = .fitted, y = .resid)) +
+  geom_smooth(method = "loess", se = FALSE, color = "#009e73", linewidth=2) +
+  geom_point(color = "black", size = 2, alpha=0.6) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  labs(title = "Residuals vs. Fitted Values", x = "Fitted Values", y = "Residuals") +
+  theme_apa()
+
+# Create Q-Q plot
+p2 <- ggplot(model_data, aes(sample = .stdresid)) +
+  stat_qq_line(color = "#009e73", linewidth = 2) +
+  stat_qq(color = "black", size = 2, alpha = 0.6) +
+  labs(title = "Normal Q-Q Plot of Residuals", x = "Theoretical Quantiles", y = "Sample Quantiles") +
+  theme_apa()
+
+# Combine plots with A and B labels
+combined <- p1 + p2 + plot_annotation(tag_levels = 'A')
+print(combined)
+ggsave(combined, filename = "ols_resids_diff.png", width = 10, height = 5, dpi = 300)
+
+# Scale-Location, Leverage
+# Note: VIF not applicable (always 1 for single predictor; skipped to avoid error; Fox, 2016 [source: https://doi.org/10.4135/9781483384276]).
+
+# Robust Methods: Added due to non-normality/heteroscedasticity/outliers
+# Robust regression: lmrob uses M-estimation, downweights outliers (e.g., robust to heavy tails; Yohai, 1987 [source: https://doi.org/10.1214/aos/1176350366]).
+model_robust <- lmrob(diff ~ inspection_time, data = rou_rep)
+summary_robust <- summary(model_robust)
+cat("\nRobust Regression Summary:\n")
+print(summary_robust)
+
+# Bootstrapping: Non-parametric CIs/p-values (e.g., 2000 resamples for stability; handles non-normality by resampling; Efron & Tibshirani, 1993 [source: https://doi.org/10.1201/9780429246593]).
+boot_fn <- function(data, index) coef(lm(diff ~ inspection_time, data = data[index, ]))[2]  # Bootstrap slope
+boot_results <- boot(rou_rep, boot_fn, R = 2000)
+boot_ci <- boot.ci(boot_results, type = "bca")  # Bias-corrected accelerated CI
+cat("\nBootstrapped Slope Estimate:", round(boot_results$t0, 3), "\n")
+cat("Bootstrapped 95% CI:", round(boot_ci$bca[4], 3), "to", round(boot_ci$bca[5], 3), "\n")
+
+# Fixed: Correct bootstrap p-value via null resampling (residual bootstrap under H0: slope=0)
+null_model <- lm(diff ~ 1, data = rou_rep)  # Intercept-only null model
+null_fitted <- predict(null_model)
+null_resid <- residuals(null_model)
+
+boot_null_fn <- function(data, index) {
+  # Resample residuals, add to null fitted values, create new y
+  new_y <- null_fitted + null_resid[index]
+  new_data <- data  # Copy original data
+  new_data$diff <- new_y  # Replace y with null-simulated
+  coef(lm(diff ~ inspection_time, data = new_data))[2]  # Refit full model, get slope
+}
+
+set.seed(123)  # For reproducibility
+boot_null <- boot(rou_rep, boot_null_fn, R = 2000)  # Bootstrap under null
+
+# Two-tailed p: Proportion of null slopes as extreme as observed (or more)
+observed_slope <- boot_results$t0
+p_boot <- mean(abs(boot_null$t) >= abs(observed_slope))  # Simpler, no +1; use mean for proportion
+cat("Corrected Bootstrapped p-value (approx):", round(p_boot, 3), "\n")
+
+# Reporting: Compare OLS and robust metrics
+# OLS: Potentially biased by violations; robust versions provide reliable estimates (e.g., if CIs differ, trust robust).
+model_glance_ols <- glance(model_ols)
+cat("\nOLS R-squared:", round(model_glance_ols$r.squared, 3), "; Adjusted:", round(model_glance_ols$adj.r.squared, 3), "; p:", format.pval(model_glance_ols$p.value, digits = 3), "\n")
+cat("OLS 95% CI for Slope:", round(confint(model_ols)[2,1], 3), "to", round(confint(model_ols)[2,2], 3), "\n")
+cat("OLS Standardized Beta:", round(lm.beta(model_ols)$standardized.coefficients[2], 3), "\n")
+
+cat("\nRobust Pseudo R-squared:", round(summary_robust$r.squared, 3), "\n")  # Note: Not directly comparable to OLS
+cat("Robust 95% CI for Slope:", round(confint(model_robust)[2,1], 3), "to", round(confint(model_robust)[2,2], 3), "\n")
+cat("Robust Standardized Beta (approx):", round(coef(model_robust)[2] / sd(rou_rep$inspection_time), 3), "\n")  # Simple approximation
+
+# Visualization: Add robust line for comparison (red dashed)
+reg <- ggplot(rou_rep, aes(x = inspection_time, y = diff)) +
+  geom_point(alpha = 0.6, size = 2, color = "black") +
+  geom_smooth(method = "lm", se = TRUE, color = "#d55e00", fill = "#d55e00", alpha = 0.3) +  # OLS
+  geom_smooth(method = "lmrob", se = FALSE, color = "#0072b2", linetype = "dashed") +  # Robust
+  labs(x = "Inspection Time Task", y = "Diff (Call-in Contrast)", title = "OLS (solid) vs Robust (dashed)") +
+  theme_apa()
+
+print(reg)
+ggsave(reg, filename = "reg_line_diff.png", width = 10, height = 5, dpi = 300)
+```

@@ -15,19 +15,49 @@ library(patchwork)
 
 ```{r}
 #| label: load-data
-#| include: false
 
 data.names <-
   c(list.files('../Data/Cohort_1', full.names = T, pattern = '*.csv$'),
     list.files('../Data/Cohort_2', full.names = T, pattern = '*.csv$'))
 data.files <- read_csv(data.names)
+
+data.files |>
+  filter(Trial_type == "experiment") |> 
+  mutate(PART_ID = str_sub(PART_ID, 1, 7)) |>
+  group_by(PART_ID) |>
+  summarise(n = n())
 ```
+
+
+
+## DEMOGRAPHICS
+```{r}
+demographics <- data.files |>
+  mutate(PART_ID = str_replace_all(PART_ID, "-", ""),
+    PART_ID = str_sub(PART_ID, 1, 6)) 
+
+demographics <- demographics$PART_ID |> unique()
+
+# Extract the letter (M or K) that appears before a number
+sex <- str_extract(demographics, "[MK](?=\\d)")
+
+# Extract the numbers that come after M or K
+age <- as.numeric(str_extract(demographics, "(?<=[MK])\\d+"))
+
+```
+
+```{r}
+table(sex)
+summary(age)
+sd(age)
+```
+
 
 ```{r}
 #| include: false
 data.aggr <-
   data.files |>
-  mutate(PART_ID = str_sub(PART_ID, 1, 6)) |>
+  mutate(PART_ID = str_sub(PART_ID, 1, 7)) |>
   filter(Trial_type == "experiment", Rt > 0.0) |> # Experiment and no timeout
   select(PART_ID,CSI, Corr) |>
   mutate(t = CSI * 8.3) |>
@@ -38,7 +68,7 @@ data.aggr <-
 ```{r}
 #| echo: false
 data.aggr |> 
-  filter(PART_ID == "156K28") |>
+  filter(PART_ID == "SK-K-24") |>
   ggplot(mapping = aes(x=t, y=mean_corr/100.0)) +
   geom_point() +
   geom_line() + 
@@ -48,6 +78,441 @@ data.aggr |>
   scale_y_continuous(labels = scales::percent) +
   labs(x = "PDI in [ms]", y = "Average correctness") +
   theme_apa()
+```
+## MULTITAPER
+
+```{r}
+library(dplyr)
+library(purrr)
+library(tibble)
+library(tidyr)
+library(multitaper)
+library(ggplot2)
+library(patchwork)
+library(scales)
+library(stringr)
+
+# ========== FIXED ANALYSIS PARAMETERS ==========
+fs <- 120                 # Hz (new sampling rate)
+deltat <- 1/fs            # s
+
+t_start_ms <- 400         # ms
+t_end_ms   <- 900         # ms
+T <- (t_end_ms - t_start_ms) / 1000  # window length in seconds (= 0.5 s)
+
+NW <- 3                   # time-bandwidth (kept same)
+K  <- 2*NW - 1            # number of tapers (= 5)
+Q_FDR <- 0.05             # BH-FDR within participant
+
+FOI_LO <- 1 / T           # Hz (lowest resolvable freq = 1/T = 2 Hz)
+FOI_HI <- fs / 2          # Hz (Nyquist = 60 Hz)
+
+# ========== ANALYSIS CORE (strict 60 Hz; FOI 2–15 Hz) ==========
+analyze_participant <- function(df_part, nw = NW, k = K, q = Q_FDR,
+                                foi_lo = FOI_LO, foi_hi = FOI_HI) {
+  df_part <- df_part %>% arrange(t)
+  x_raw <- df_part$mean_corr
+  ok <- is.finite(x_raw)
+  x_raw <- x_raw[ok]
+  N <- length(x_raw)
+  if (N < 8) {
+    return(list(
+      freqs = tibble(PART_ID = df_part$PART_ID[1]) %>% slice(0),
+      summary = tibble(
+        PART_ID = df_part$PART_ID[1],
+        N = N, fs = fs, deltat_s = deltat,
+        duration_s = N/fs, rayleigh_hz = ifelse(N>0, fs/N, NA_real_),
+        any_sig = FALSE, n_sig = 0L,
+        p_global = NA_real_, min_p = NA_real_, min_p_freq_hz = NA_real_
+      )
+    ))
+  }
+
+  # Standardize for spectral test
+  xz <- as.numeric(scale(x_raw, center = TRUE, scale = TRUE))
+
+  res <- multitaper::spec.mtm(
+    xz, k = k, nw = nw, nFFT = N, deltat = deltat,
+    Ftest = TRUE, returnInternals = TRUE, plot = FALSE
+  )
+  freqs <- res$freq   # Hz
+
+  # Extract harmonic F-test p-values
+  Fvals <- NULL; pvals <- NULL
+  if (!is.null(res$mtm$Ftest)) {
+    Ft <- res$mtm$Ftest
+    if (is.numeric(Ft)) Fvals <- as.numeric(Ft)
+    if (is.list(Ft) || is.data.frame(Ft)) {
+      nm <- tolower(names(Ft))
+      if ("f" %in% nm) Fvals <- as.numeric(Ft[[which(nm == "f")[1]]])
+      if (is.null(Fvals) && "ftest" %in% nm) Fvals <- as.numeric(Ft[[which(nm == "ftest")[1]]])
+      if (is.null(pvals) && "pvalues" %in% nm) pvals <- as.numeric(Ft[[which(nm == "pvalues")[1]]])
+      if (is.null(pvals) && "p.value" %in% nm) pvals <- as.numeric(Ft[[which(nm == "p.value")[1]]])
+    }
+  }
+  if (is.null(pvals)) {
+    if (is.null(Fvals)) stop("Could not extract F-test; inspect str(res).")
+    pvals <- stats::pf(Fvals, df1 = 2, df2 = 2 * k - 2, lower.tail = FALSE)
+  }
+
+  # Keep only FOI (and >0 Hz)
+  keep <- is.finite(pvals) & freqs >= foi_lo & freqs <= foi_hi
+  freqs <- freqs[keep]
+  pvals <- pvals[keep]
+  m <- length(pvals)
+  if (m == 0) {
+    return(list(
+      freqs = tibble(PART_ID = df_part$PART_ID[1]) %>% slice(0),
+      summary = tibble(
+        PART_ID = df_part$PART_ID[1],
+        N = N, fs = fs, deltat_s = deltat,
+        duration_s = N/fs, rayleigh_hz = fs/N,
+        any_sig = FALSE, n_sig = 0L,
+        p_global = NA_real_, min_p = NA_real_, min_p_freq_hz = NA_real_
+      )
+    ))
+  }
+
+  p_adj <- p.adjust(pvals, method = "BH")
+  sig <- p_adj < q
+
+  p_min <- min(pvals, na.rm = TRUE)
+  p_global <- min(1, p_min * m)   # Bonferroni within FOI
+
+  tib_freq <- tibble(
+    PART_ID = df_part$PART_ID[1],
+    freq_hz = freqs,
+    p = pvals,
+    p_fdr = p_adj,
+    sig = sig
+  )
+
+  list(
+    freqs = tib_freq,
+    summary = tibble(
+      PART_ID = df_part$PART_ID[1],
+      N = N, fs = fs, deltat_s = deltat,
+      duration_s = N/fs, rayleigh_hz = fs/N,
+      any_sig = any(sig), n_sig = sum(sig),
+      p_global = p_global, min_p = p_min,
+      min_p_freq_hz = freqs[which.min(pvals)]
+    )
+  )
+}
+
+# Ensure column types in your df
+data.aggr <- data.aggr %>%
+  mutate(
+    PART_ID = as.character(PART_ID),
+    t = as.numeric(t),
+    mean_corr = as.numeric(mean_corr)
+  )
+
+# Run analysis per participant
+res_list <- data.aggr %>%
+  group_by(PART_ID) %>%
+  group_split() %>%
+  map(~ analyze_participant(.x, nw = NW, k = K, q = Q_FDR, foi_lo = FOI_LO, foi_hi = FOI_HI))
+
+per_part_freqs   <- map_dfr(res_list, "freqs")
+per_part_summary <- map_dfr(res_list, "summary")
+
+# Group-level Fisher combination of per-participant global p-values (within FOI)
+pvec <- per_part_summary %>% filter(is.finite(p_global)) %>% pull(p_global)
+X <- -2 * sum(log(pvec))
+p_group <- stats::pchisq(X, df = 2 * length(pvec), lower.tail = FALSE)
+
+# ========== APA THEME ==========
+apa_theme <- function(base_size = 11) {
+  theme_classic(base_size = base_size) +
+    theme(
+      panel.border = element_blank(),
+      axis.title = element_text(face = "bold"),
+      plot.title = element_text(face = "bold"),
+      plot.subtitle = element_text(),
+      plot.caption = element_text(size = rel(0.9), color = "gray30"),
+      legend.position = "right"
+    )
+}
+
+# ========== PARTICIPANT PANELS (Time series, -log10 p, Spectrum) ==========
+compute_participant_objects <- function(part_id, nw = NW, k = K, foi_lo = FOI_LO, foi_hi = FOI_HI) {
+  df_part <- data.aggr %>% filter(PART_ID == part_id) %>% arrange(t)
+  x_raw <- df_part$mean_corr
+  ok <- is.finite(x_raw)
+  x_raw <- x_raw[ok]
+  N <- length(x_raw)
+  if (N < 8) return(NULL)
+  t_s <- seq(0, by = deltat, length.out = N)
+
+  xz <- as.numeric(scale(x_raw, center = TRUE, scale = TRUE))
+  res <- multitaper::spec.mtm(
+    xz, k = k, nw = nw, nFFT = N, deltat = deltat,
+    Ftest = TRUE, returnInternals = TRUE
+  )
+  freqs <- res$freq
+
+  Fvals <- NULL; pvals <- NULL
+  if (!is.null(res$mtm$Ftest)) {
+    Ft <- res$mtm$Ftest
+    if (is.numeric(Ft)) Fvals <- as.numeric(Ft)
+    if (is.list(Ft) || is.data.frame(Ft)) {
+      nm <- tolower(names(Ft))
+      if ("f" %in% nm) Fvals <- as.numeric(Ft[[which(nm == "f")[1]]])
+      if (is.null(Fvals) && "ftest" %in% nm) Fvals <- as.numeric(Ft[[which(nm == "ftest")[1]]])
+      if (is.null(pvals) && "pvalues" %in% nm) pvals <- as.numeric(Ft[[which(nm == "pvalues")[1]]])
+      if (is.null(pvals) && "p.value" %in% nm) pvals <- as.numeric(Ft[[which(nm == "p.value")[1]]])
+    }
+  }
+  if (is.null(pvals)) {
+    if (is.null(Fvals)) stop("Could not extract F-test.")
+    pvals <- stats::pf(Fvals, df1 = 2, df2 = 2*k - 2, lower.tail = FALSE)
+  }
+
+  keep <- is.finite(pvals) & freqs >= foi_lo & freqs <= foi_hi
+
+  list(
+    part_id = part_id,
+    t = t_s,
+    x_raw = x_raw,
+    freqs = freqs[keep],
+    spec = res$spec[keep],
+    p = pvals[keep],
+    p_fdr = p.adjust(pvals[keep], method="BH"),
+    sig = p.adjust(pvals[keep], method="BH") < Q_FDR,
+    N = N,
+    duration_s = N/fs,
+    rayleigh_hz = fs/N
+  )
+}
+
+plot_participant_panels <- function(part_id) {
+  obj <- compute_participant_objects(part_id)
+  if (is.null(obj)) return(NULL)
+
+  # Panel A: time series
+  gA <- ggplot(tibble(t_s = obj$t, mean_corr = obj$x_raw),
+               aes(x = t_s, y = mean_corr)) +
+    geom_line(color = "black", linewidth = 0.6) +
+    labs(
+      title = paste0("Participant ", part_id, ": Time series"),
+      x = "Time (s)", y = "Mean correlation (0–100)",
+      caption = paste0(
+        "Panel A. Parameters: fs=", fs, " Hz; Δt=", signif(deltat,3),
+        " s; N=", obj$N, "; T=", signif(obj$duration_s,3), " s; Rayleigh≈",
+        signif(obj$rayleigh_hz,3), " Hz; NW=", NW, "; K=", K, "; FDR q=", Q_FDR,
+        "; FOI=", FOI_LO, "–", FOI_HI, " Hz."
+      )
+    ) +
+    apa_theme()
+
+  # Panel B: -log10(p) vs frequency (FOI only)
+  dfp <- tibble(freq_hz = obj$freqs, p = obj$p, p_fdr = obj$p_fdr, sig = obj$sig)
+  gB <- ggplot(dfp, aes(x = freq_hz, y = -log10(p))) +
+    geom_point(aes(color = sig), size = 2, alpha = 0.9) +
+    scale_color_manual(values = c("FALSE"="#888888","TRUE"="#D55E00"),
+                       labels=c("Non-sig","FDR<0.05")) +
+    scale_x_continuous(limits = c(FOI_LO, FOI_HI)) +
+    labs(
+      title = "Harmonic F-test p-values (FOI)",
+      x = "Frequency (Hz)", y = expression(-log[10](p)),
+      caption = paste0("Panel B. Thomson harmonic F-test per frequency within FOI ", FOI_LO, "–", FOI_HI, " Hz; FDR within participant.")
+    ) +
+    apa_theme() +
+    guides(color = guide_legend(title = NULL))
+
+  # Panel C: multitaper spectrum (FOI only)
+  gC <- ggplot(tibble(freq_hz = obj$freqs, S = obj$spec),
+               aes(x = freq_hz, y = S)) +
+    geom_line(color = "black", linewidth = 0.6) +
+    scale_x_continuous(limits = c(FOI_LO, FOI_HI)) +
+    labs(
+      title = "Multitaper spectrum (FOI)",
+      x = "Frequency (Hz)", y = "Power",
+      caption = paste0("Panel C. Spectrum restricted to FOI ", FOI_LO, "–", FOI_HI, " Hz.")
+    ) +
+    apa_theme()
+
+  gA / (gB | gC) +
+    plot_annotation(
+      caption = "Note. Tests: Thomson multitaper harmonic F-test (NW, K above); BH-FDR at q; strict 60 Hz sampling; inference confined to FOI.",
+      theme = theme(plot.caption = element_text(size = 9))
+    )
+}
+
+plot_signif_FDR <- function(participant_list) {
+  # Validate input
+  if (length(participant_list) > 9) {
+    warning("Only first 9 participants will be plotted in 3x3 layout")
+    participant_list <- participant_list[1:9]
+  }
+  
+  # Create individual plots for each participant
+  plot_list <- list()
+  
+  for (i in seq_along(participant_list)) {
+    part_id <- participant_list[i]
+    obj <- compute_participant_objects(part_id)
+    
+    if (is.null(obj)) {
+      # Create empty plot for missing data
+      plot_list[[i]] <- ggplot() + 
+        annotate("text", x = 0.5, y = 0.5, label = paste("No data\nParticipant", part_id), 
+                 size = 3, hjust = 0.5, vjust = 0.5) +
+        theme_void() +
+        labs(title = paste("P", part_id, sep = ""))
+    } else {
+      # Create plot for participant
+      dfp <- tibble(freq_hz = obj$freqs, p = obj$p, p_fdr = obj$p_fdr, sig = obj$sig)
+      
+      plot_list[[i]] <- ggplot(dfp, aes(x = freq_hz, y = -log10(p))) +
+        geom_point(aes(color = sig), size = 1.5, alpha = 0.9) +
+        scale_color_manual(values = c("FALSE" = "#888888", "TRUE" = "#D55E00"),
+                          labels = c("Non-sig", "FDR<0.05")) +
+        scale_x_continuous(limits = c(FOI_LO, FOI_HI)) +
+        labs(
+          title = paste("P", part_id, sep = ""),
+          x = if (i %in% c(7, 8, 9)) "Frequency (Hz)" else "",
+          y = if (i %in% c(1, 4, 7)) expression(-log[10](p)) else ""
+        ) +
+        apa_theme() +
+        theme(
+          plot.title = element_text(size = 10, hjust = 0.5),
+          axis.title = element_text(size = 9),
+          axis.text = element_text(size = 8),
+          legend.position = "none",
+          plot.margin = margin(5, 5, 5, 5)
+        )
+    }
+  }
+  
+  # Fill remaining slots with empty plots if needed
+  while (length(plot_list) < 3) {
+    plot_list[[length(plot_list) + 1]] <- ggplot() + theme_void()
+  }
+  
+  # Create combined plot with patchwork
+  combined_plot <- wrap_plots(plot_list, ncol = 3, nrow = 1)
+  
+  # Add overall title and caption
+  final_plot <- combined_plot + 
+    plot_annotation(
+      title = "Harmonic F-test p-values across participants (FOI)",
+      caption = paste0("Thomson harmonic F-test per frequency within FOI ", FOI_LO, "–", FOI_HI, 
+                      " Hz; FDR within participant. Orange points: FDR < 0.05; Gray points: Non-significant."),
+      theme = theme(
+        plot.title = element_text(size = 14, hjust = 0.5, face = "bold"),
+        plot.caption = element_text(size = 10, hjust = 0)
+      )
+    )
+  
+  return(final_plot)
+}
+
+# ========== GROUP-LEVEL FIGURES (FOI) ==========
+# 1) Distribution of participant-level global p-values (FOI)
+g_global_hist <- ggplot(per_part_summary %>% filter(is.finite(p_global)),
+                        aes(x = p_global)) +
+  geom_histogram(color="white", fill="#4C78A8", bins = 20, boundary = 0) +
+  geom_vline(xintercept = Q_FDR, linetype = "dashed", color = "#F58518", linewidth = 1.0) +
+  scale_x_continuous(limits = c(0,1)) +
+  labs(
+    # title = "Distribution of participant-level global p-values (FOI)",
+    x = "Global p (min-p Bonferroni within FOI)", y = "Count",
+    caption = paste0(
+      "Figure 1. Fisher’s combination: χ²(", 2*length(pvec),
+      ") = ", number(X, accuracy=0.01), ", p = ", format.pval(p_group, digits = 3),
+      ". Parameters: fs=", fs, " Hz; NW=", NW, "; K=", K, "; FDR q=", Q_FDR,
+      "; FOI=", FOI_LO, "–", FOI_HI, " Hz."
+    )
+  ) +
+  apa_theme()
+
+# 2) QQ plot vs Uniform(0,1)
+m <- sum(is.finite(per_part_summary$p_global))
+qq_df <- tibble(
+  i = 1:m,
+  p_sorted = sort(per_part_summary$p_global[is.finite(per_part_summary$p_global)], na.last = NA),
+  u_theory = (1:m)/(m+1)
+)
+g_global_qq <- ggplot(qq_df, aes(x = u_theory, y = p_sorted)) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "#F58518") +
+  geom_point(color = "#4C78A8", size = 1.8, alpha = 0.9) +
+  labs(
+    # title = "QQ plot of participant-level global p-values (FOI)",
+    x = "Uniform(0,1) quantiles", y = "Observed p quantiles",
+    caption = "Figure 2. Under the global null, points lie near the diagonal."
+  ) +
+  apa_theme()
+
+# 3) Parameter summaries: N, duration, Rayleigh (unchanged by FOI)
+g_N <- ggplot(per_part_summary, aes(x = N)) +
+  geom_histogram(color="white", fill="#72B7B2", bins = 20) +
+  labs(
+    title = "Samples per participant",
+    x = "N", y = "Count",
+    caption = "Figure 3A. Distribution of N."
+  ) + apa_theme()
+
+g_T <- ggplot(per_part_summary, aes(x = duration_s)) +
+  geom_histogram(color="white", fill="#E45756", bins = 20) +
+  labs(
+    title = "Window duration",
+    x = "Duration T (s)", y = "Count",
+    caption = "Figure 3B. Distribution of T = N/fs."
+  ) + apa_theme()
+
+g_R <- ggplot(per_part_summary, aes(x = rayleigh_hz)) +
+  geom_histogram(color="white", fill="#F58518", bins = 20) +
+  labs(
+    title = "Rayleigh resolution",
+    x = "Rayleigh (Hz) = 1/T", y = "Count",
+    caption = "Figure 3C. Frequency resolution."
+  ) + apa_theme()
+
+g_params <- g_N | g_T | g_R
+
+# 4) Proportion with any FDR-significant frequency (within FOI)
+prop_any <- mean(per_part_summary$any_sig, na.rm = TRUE)
+g_any <- per_part_summary %>%
+  count(any_sig) %>%
+  mutate(label = ifelse(any_sig, "Any FDR-sig frequency", "No FDR-sig frequency")) %>%
+  ggplot(aes(x = label, y = n, fill = label)) +
+  geom_col(width = 0.6, color = "white") +
+  scale_fill_manual(values = c("#888888","#D55E00")) +
+  labs(
+    title = "Participants with any FDR-significant periodicity (FOI)",
+    x = NULL, y = "Count",
+    caption = paste0("Figure 4. Proportion with any_sig within FOI = ", percent(prop_any, accuracy = 0.1), ".")
+  ) +
+  apa_theme() +
+  theme(legend.position = "none")
+
+# ========== APA-STYLE TEXT SUMMARY ==========
+cat(
+  str_glue(
+"APA-style summary (FOI = {FOI_LO}–{FOI_HI} Hz):
+Individual-level tests used Thomson multitaper harmonic F-test (NW = {NW}, K = {K}) at strict sampling fs = {fs} Hz (Δt = {signif(deltat,3)} s), 
+with Benjamini–Hochberg FDR control at q = {Q_FDR}. Global participant-level p-values used Bonferroni-adjusted minima across frequencies in FOI.
+Across {nrow(per_part_summary)} participants, {percent(prop_any, 0.1)} showed any FDR-significant frequency within FOI.
+Fisher’s group-level test yielded χ²({2*length(pvec)}) = {format(round(X, 2), nsmall=2)}, p = {format.pval(p_group, digits=3)}.
+Median N = {median(per_part_summary$N, na.rm=TRUE)}, median T = {signif(median(per_part_summary$duration_s, na.rm=TRUE),3)} s, median Rayleigh = {signif(median(per_part_summary$rayleigh_hz, na.rm=TRUE),3)} Hz.
+Note. Short windows limit sensitivity at very low frequencies; inference is restricted to FOI {FOI_LO}–{FOI_HI} Hz.
+\n")
+)
+
+# ========== SHOW FIGURES ==========
+g_global_hist + g_global_qq + plot_annotation(tag_levels = "A")
+
+
+
+# Participant panels for the top N by smallest global p (FOI)
+topN <- 3
+top_ids <- per_part_summary %>% arrange(p_global) %>% slice_head(n = topN) %>% pull(PART_ID)
+
+plot_signif_FDR(top_ids)
+# For a specific participant:
+# print(plot_participant_panels("100M32"))
 ```
 
 ## Ljubng box formal testng
@@ -65,9 +530,10 @@ process_data <- function(df) {
   fit <- lm(mean_corr ~ poly(t, 2), data = df)
   df$detrended_mean_corr <- residuals(fit)
   
+  lag = 9
   # Ljung-Box test on the detrended series
   test_result <-
-    Box.test(df$detrended_mean_corr, type = "Ljung-Box")
+    Box.test(df$detrended_mean_corr, type = "Ljung-Box", lag = lag)
   
   # Return a tibble with the results
   tibble(
@@ -112,7 +578,6 @@ random_part_id <- data.aggr$PART_ID |> unique() |> sample(1)
 # random_part_id <- "MG-M-3" # jedna duża wolna fala przez 200 ms, i dwa malutkie + 
 # random_part_id <- "AM-K-2" # dwa sprzężenia po 50 ms + 
 # random_part_id <- "RC-M-2" # wolne 300 ms i szybkie 40 ms
-random_part_id <- "JR-K-2" # jedno sprzężenie pod oniec przez 100 ms + 
 #random_part_id <- "JP-M-2" # jeden peak 50 ms + 
 # random_part_id <- "36K20" # dwa peaki, reszta płaska
 # random_part_id <- "91M22" # trzy spore peaki, troche płaska reszta
@@ -122,6 +587,8 @@ random_part_id <- "JR-K-2" # jedno sprzężenie pod oniec przez 100 ms +
 print(random_part_id)
 ```
 ```{r}
+random_part_id <- data.aggr$PART_ID |> unique() |> sample(1)
+
 
 # detrending poprzez odjęcie wielomianu stopnia 2
 my.data <- data.aggr |> filter(PART_ID == random_part_id) |> arrange(t)
@@ -131,18 +598,19 @@ my.data$mean_corr <- residuals(fit)
 my.data <- data.frame(time = my.data$t, x = my.data$mean_corr)
 
 my.w <- analyze.wavelet(my.data, "x",
-loess.span = 0,
-dt = 1, dj = 1/120,
-lowerPeriod = 1,
-upperPeriod = 32,
-make.pval = TRUE, n.sim = 200)
+  loess.span = 0,
+  dt = 1, dj = 1/60,
+  lowerPeriod = 2,        # must be >= 2 when dt = 1
+  upperPeriod = 32,
+  make.pval = TRUE,
+  method = "AR",          # use red-noise surrogates
+  params = list(AR = list(p = 1)),  # AR(1)
+  n.sim = 1000            # more sims => stabler p-values
+)
 
-```
-
-```{r}
-# Z JAKIEGOŚ DZIWNEGO POWODU P VALUE JEEST USTALONE NA P=0.1
 wt.image(
-  siglvl = 0.05, 
+  # siglvl = 0.00034, 
+  siglvl = 0.001515,
   plot.ridge = FALSE,
   plot.legend = FALSE,
   my.w,
@@ -152,45 +620,10 @@ wt.image(
   timelab = "PDI in [ms]",
   periodlab = " Period in [data points per cycle]",
   spec.time.axis = list(at= seq(0, 60, by = 12), labels = seq(400, 900, by=100))
-  # spec.period.axis = list(at = c(1, 2, 4, 8, 16), labels = c(16, 8, 4, 2, 1))
-
-)
-```
-
-```{r}
-reconstruct(
-  my.w,
-  plot.waves = FALSE,
-  lwd = c(1, 2),
-  legend.coords = "bottomleft",
-  only.sig = TRUE,
-  spec.time.axis = list(at= seq(0, 60, by = 12), labels = seq(400, 900, by=100)),
-  
-
-    timelab = "PDI in [ms]"
 )
 ```
 
 
-## Peridogram
-
-```{r}
-
-# Plot the periodogram
-spectrum(my.data, main = "Periodogram of Time Series Data")
-
-# If you prefer a ggplot2 style plot, you can extract the spectral data and plot it manually
-spectral_data <- spectrum(my.data$x, plot = FALSE)
-spectral_df <-
-  as_tibble(list(frequency = spectral_data$freq, spectrum = spectral_data$spec))
-
-# Plot using ggplot2
-ggplot(spectral_df, aes(x = frequency, y = spectrum)) +
-  geom_line() +
-  theme_apa() +
-  labs(x = "Frequency", y = "Spectral Density", title = "Periodogram of Time Series Data")
-
-```
 
 
 
