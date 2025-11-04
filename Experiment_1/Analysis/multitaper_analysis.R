@@ -50,9 +50,13 @@ data.aggr <-
   dplyr::select(PART_ID, CSI, Corr) |>
   mutate(t = CSI * DT) |>
   group_by(PART_ID, t) |>
-  summarise(mean_corr = 100.0 * mean(Corr))
-
-stopifnot(all(c("PART_ID", "t", "mean_corr") %in% names(data.aggr)))
+  summarise(mean_corr = 100.0 * mean(Corr)) |>
+  ungroup() |>
+  group_by(PART_ID) |>
+  mutate(mean_corr_pred = predict(lm(mean_corr ~ poly(t, 2, raw = TRUE))),
+         mean_corr = mean_corr - mean_corr_pred) |>
+  ungroup() |>
+  dplyr::select(-mean_corr_pred)
 
 data_clean <- data.aggr %>%
   filter(is.finite(t), is.finite(mean_corr)) %>%
